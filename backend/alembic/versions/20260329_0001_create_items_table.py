@@ -1,7 +1,7 @@
 """create items table
 
 Revision ID: 20260329_0001
-Revises: 
+Revises:
 Create Date: 2026-03-29
 """
 
@@ -15,7 +15,9 @@ branch_labels = None
 depends_on = None
 
 
-status_enum = sa.Enum("lost", "found", name="item_status")
+# Enum type is created/dropped explicitly in this migration.
+# create_type=False prevents a second implicit CREATE TYPE when creating the table.
+status_enum = sa.Enum("lost", "found", name="item_status", create_type=False)
 
 
 def upgrade() -> None:
