@@ -20,7 +20,15 @@ class Item(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(60), nullable=False, default="Other")
     location: Mapped[str] = mapped_column(String(120), nullable=False)
-    status: Mapped[ItemStatus] = mapped_column(SqlEnum(ItemStatus, name="item_status"), nullable=False)
+    status: Mapped[ItemStatus] = mapped_column(
+        SqlEnum(
+            ItemStatus,
+            name="item_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            validate_strings=True,
+        ),
+        nullable=False,
+    )
     contact_name: Mapped[str] = mapped_column(String(80), nullable=False)
     telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
     telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
