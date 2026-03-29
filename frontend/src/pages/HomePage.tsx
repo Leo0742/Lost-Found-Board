@@ -9,12 +9,22 @@ export const HomePage = () => {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<ItemStatus | 'all'>('all')
   const [category, setCategory] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
-    const result = await fetchItems({ q, status, category })
-    setItems(result)
-    setLoading(false)
+    setError(null)
+
+    try {
+      const result = await fetchItems({ q, status, category })
+      setItems(result)
+    } catch (err) {
+      console.error('Failed to load items', err)
+      setItems([])
+      setError('Unable to load items right now. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -43,7 +53,8 @@ export const HomePage = () => {
       </form>
 
       {loading ? <p>Loading...</p> : null}
-      {!loading && items.length === 0 ? <p>No items found.</p> : null}
+      {!loading && error ? <p role="alert">{error}</p> : null}
+      {!loading && !error && items.length === 0 ? <p>No items found.</p> : null}
       <div className="grid">
         {items.map((item) => (
           <ItemCard key={item.id} item={item} />
