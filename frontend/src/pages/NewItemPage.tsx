@@ -1,7 +1,29 @@
 import { FormEvent, useState } from 'react'
+import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { createItem } from '../api/items'
 import { ItemStatus } from '../types/item'
+
+const formatBackendValidationError = (error: unknown): string => {
+  if (!axios.isAxiosError(error)) {
+    return 'Could not create item. Please review the form.'
+  }
+
+  const detail = error.response?.data?.detail
+  if (!Array.isArray(detail) || detail.length === 0) {
+    return 'Could not create item. Please review the form.'
+  }
+
+  const messages = detail
+    .map((issue: { loc?: Array<string | number>; msg?: string }) => {
+      const field = issue.loc?.[issue.loc.length - 1]
+      if (!field || !issue.msg) return null
+      return `${String(field)}: ${issue.msg}`
+    })
+    .filter((message: string | null): message is string => Boolean(message))
+
+  return messages.length > 0 ? messages.join('; ') : 'Could not create item. Please review the form.'
+}
 
 export const NewItemPage = () => {
   const [title, setTitle] = useState('')
@@ -19,17 +41,17 @@ export const NewItemPage = () => {
     setError('')
     try {
       const item = await createItem({
-        title,
-        description,
-        category,
-        location,
+        title: title.trim(),
+        description: description.trim(),
+        category: category.trim(),
+        location: location.trim(),
         status,
-        contact_name: contactName,
-        telegram_username: telegramUsername || undefined
+        contact_name: contactName.trim(),
+        telegram_username: telegramUsername.trim() || undefined
       })
       navigate(`/items/${item.id}`)
-    } catch {
-      setError('Could not create item. Please review the form.')
+    } catch (err) {
+      setError(formatBackendValidationError(err))
     }
   }
 
@@ -46,27 +68,39 @@ export const NewItemPage = () => {
         </label>
         <label>
           Title
-          <input required value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
         <label>
           Category
-          <input required value={category} onChange={(e) => setCategory(e.target.value)} />
+          <input required minLength={2} maxLength={60} value={category} onChange={(e) => setCategory(e.target.value)} />
         </label>
         <label>
           Location
-          <input required value={location} onChange={(e) => setLocation(e.target.value)} />
+          <input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} />
         </label>
         <label>
           Description
-          <textarea required rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <textarea
+            required
+            minLength={5}
+            maxLength={2000}
+            rows={4}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </label>
         <label>
           Contact name
-          <input required value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} />
         </label>
         <label>
           Telegram username (optional)
-          <input value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" />
+          <input
+            maxLength={80}
+            value={telegramUsername}
+            onChange={(e) => setTelegramUsername(e.target.value)}
+            placeholder="@username"
+          />
         </label>
         {error ? <p className="error">{error}</p> : null}
         <button type="submit">Create item</button>
