@@ -187,11 +187,24 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Optional fallback for development only: `ALLOW_ADMIN_SECRET_FALLBACK=true` with `X-Admin-Secret`.
 - Web navigation shows **Moderation** entry and admin role chip only for authorized linked admin/moderator sessions.
 
+### First-time bootstrap (username) ➜ migrate to user ID (recommended)
+
+1. Put your Telegram username in `ADMIN_TELEGRAM_USERNAMES` for first-time bootstrap.
+2. Start backend+web+bot and link your website session with `/link <code>`.
+3. In Telegram bot, run `/whoami` and copy your numeric Telegram user id.
+4. Move to secure ID-based config:
+   - add your ID to `ADMIN_TELEGRAM_USER_IDS`
+   - remove username from `ADMIN_TELEGRAM_USERNAMES` (or leave empty)
+5. Restart services.
+
+This keeps Telegram-linked auth as the source of truth while transitioning to the stronger immutable identifier.
+
 ### Configure in `.env`
 
 ```dotenv
-ADMIN_TELEGRAM_USER_IDS=1325016161,987654321
-ADMIN_TELEGRAM_USERNAMES=Leo0742,mod_user
+ADMIN_TELEGRAM_USER_IDS=
+ADMIN_TELEGRAM_USERNAMES=Leo0742
+ALLOW_ADMIN_SECRET_FALLBACK=false
 ```
 
 Tips:
@@ -205,15 +218,41 @@ Tips:
 
 ### Local admin access test
 
-1. Put your Telegram ID into `ADMIN_TELEGRAM_USER_IDS` in `.env`.
-2. Start stack:
+1. Copy env and edit admin variables:
+   ```bash
+   cp .env.example .env
+   ```
+2. For first login bootstrap, set:
+   ```dotenv
+   ADMIN_TELEGRAM_USER_IDS=
+   ADMIN_TELEGRAM_USERNAMES=<your_telegram_username_without_@>
+   ALLOW_ADMIN_SECRET_FALLBACK=false
+   ```
+3. Start stack:
    ```bash
    docker compose up --build
    ```
-3. Open `/admin`.
-4. If prompted, generate link code and send `/link <code>` to your bot.
-5. Reload `/admin` and verify access is granted.
-6. Remove your ID/username from env and restart; `/admin` should show access denied and not load moderation data.
+4. Open `/admin`.
+5. If prompted, generate link code and send `/link <code>` to your bot.
+6. In bot, run:
+   ```text
+   /whoami
+   ```
+   Confirm it shows `Admin access: yes` and note `Telegram user id`.
+7. Update `.env` to switch to ID-based allowlist:
+   ```dotenv
+   ADMIN_TELEGRAM_USER_IDS=<your_numeric_telegram_user_id>
+   ADMIN_TELEGRAM_USERNAMES=
+   ALLOW_ADMIN_SECRET_FALLBACK=false
+   ```
+8. Restart backend and bot:
+   ```bash
+   docker compose up --build backend bot
+   ```
+9. Verify:
+   - `/whoami` still shows admin access with role
+   - `/admin` loads moderation UI
+   - if removed from allowlists, `/admin` shows access denied and hides admin nav
 
 ## Anti-Spam Rules
 
