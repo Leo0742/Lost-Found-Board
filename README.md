@@ -62,6 +62,9 @@ The codebase is intentionally modular for hackathon speed:
 - `POST /api/items/{id}/delete` (soft delete)
 - `POST /api/items/upload-image` (multipart image upload)
 - `GET /api/items/search?q=...`
+- `GET /api/items/search-smart?q=...&limit=...` (typo-tolerant ranked search with reasons)
+- `GET /api/items/categories` (canonical category catalog)
+- `GET /api/items/category-suggest?title=...` (category inference by title)
 - `GET /api/items/matches/{id}`
 - `GET /api/items/admin/items` (requires Telegram-linked admin/moderator session)
 - `POST /api/items/admin/items/{id}/moderate` (approve/reject/flag/unflag)
@@ -86,6 +89,7 @@ The codebase is intentionally modular for hackathon speed:
 - `/new` guided conversation
 - `/list`
 - `/search <query>`
+- `/search <query>` now uses fuzzy/token smart ranking with readable match reasons.
 - `/lost`
 - `/found`
 - `/myitems` for ownership-based report management.
@@ -93,7 +97,8 @@ The codebase is intentionally modular for hackathon speed:
 - `/flag <item_id> <reason>` to report abuse/spam.
 - `/claims` to track claim/contact workflow.
 - `/whoami` to display Telegram account id/username/name and admin role access.
-- `/clear` cancels ongoing flows and resets state.
+- `/clear` resets FSM state, clears pending wizard data, removes stale keyboards, and attempts best-effort deletion of recent private-chat messages (with explicit success/failure counts).
+- `/new` category step now supports a richer catalog with inline keyboard pagination and auto-suggested category after title entry.
 - `/new` wizard includes a photo step (send photo or skip).
 - After `/new`, bot displays matches and sends strong-match notifications to relevant Telegram owners.
 
@@ -258,6 +263,16 @@ Tips:
 
 - Rate limit on create: max `CREATE_RATE_LIMIT_MAX_ITEMS` within `CREATE_RATE_LIMIT_WINDOW_MINUTES`.
 - Duplicate protection blocks repeated same title/description/contact within 24 hours.
+
+## Bot Search & Category UX Upgrade
+
+- Smart search (`/search`) is now typo-tolerant and punctuation/case-insensitive.
+- Ranking combines fuzzy title match, partial text match, token overlap, and location/category similarity.
+- `/new` flow category step now includes:
+  - large practical category catalog
+  - inline keyboard browsing (paged)
+  - auto-suggested category inferred from title (user can accept/change)
+- `/clear` now reports how much cleanup was actually performed, instead of claiming full chat wipe when Telegram limits prevent it.
 - Very low-quality/gibberish-like text submissions are rejected.
 
 ## Media Storage (Local, Persistent)
