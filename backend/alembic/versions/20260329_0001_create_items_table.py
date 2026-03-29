@@ -7,6 +7,7 @@ Create Date: 2026-03-29
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "20260329_0001"
@@ -15,9 +16,9 @@ branch_labels = None
 depends_on = None
 
 
-# Enum type is created/dropped explicitly in this migration.
-# create_type=False prevents a second implicit CREATE TYPE when creating the table.
-status_enum = sa.Enum("lost", "found", name="item_status", create_type=False)
+# We explicitly create/drop this PostgreSQL enum in migration lifecycle.
+# create_type=False prevents op.create_table from emitting a duplicate CREATE TYPE.
+status_enum = postgresql.ENUM("lost", "found", name="item_status", create_type=False)
 
 
 def upgrade() -> None:
