@@ -12,6 +12,12 @@ class ItemStatus(str, Enum):
     FOUND = "found"
 
 
+class ItemLifecycle(str, Enum):
+    ACTIVE = "active"
+    RESOLVED = "resolved"
+    DELETED = "deleted"
+
+
 class Item(Base):
     __tablename__ = "items"
 
@@ -29,6 +35,16 @@ class Item(Base):
         ),
         nullable=False,
     )
+    lifecycle: Mapped[ItemLifecycle] = mapped_column(
+        SqlEnum(
+            ItemLifecycle,
+            name="item_lifecycle",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            validate_strings=True,
+        ),
+        nullable=False,
+        default=ItemLifecycle.ACTIVE,
+    )
     contact_name: Mapped[str] = mapped_column(String(80), nullable=False)
     telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
     telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -36,3 +52,5 @@ class Item(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

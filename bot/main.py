@@ -36,7 +36,7 @@ FIELD_LIMITS = {
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="New Item"), KeyboardButton(text="Recent Items")],
+        [KeyboardButton(text="New Item"), KeyboardButton(text="My Items"), KeyboardButton(text="Recent Items")],
         [KeyboardButton(text="Search"), KeyboardButton(text="Lost Items"), KeyboardButton(text="Found Items")],
         [KeyboardButton(text="Help"), KeyboardButton(text="Clear")],
     ],
@@ -58,6 +58,7 @@ BOT_COMMANDS = [
     BotCommand(command="search", description="search items"),
     BotCommand(command="lost", description="show lost items"),
     BotCommand(command="found", description="show found items"),
+    BotCommand(command="myitems", description="manage your reports"),
     BotCommand(command="clear", description="cancel current action and clear chat state"),
 ]
 
@@ -129,6 +130,30 @@ def _review_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _item_actions_keyboard(item_id: int, lifecycle: str) -> InlineKeyboardMarkup:
+    controls = [
+        [
+            InlineKeyboardButton(text="🔎 Show Matches", callback_data=f"myitem:matches:{item_id}"),
+            InlineKeyboardButton(text="🗑 Delete", callback_data=f"myitem:delete:{item_id}"),
+        ]
+    ]
+    if lifecycle == "active":
+        controls.insert(0, [InlineKeyboardButton(text="✅ Mark Resolved", callback_data=f"myitem:resolve:{item_id}")])
+    elif lifecycle == "resolved":
+        controls.insert(0, [InlineKeyboardButton(text="♻️ Reopen", callback_data=f"myitem:reopen:{item_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=controls)
+
+
+def _render_item_summary(item: dict) -> str:
+    return (
+        f"#{item['id']} {item['title']}\n"
+        f"Type: {str(item['status']).upper()} • Lifecycle: {str(item['lifecycle']).upper()}\n"
+        f"Category: {item['category']}\n"
+        f"Location: {item['location']}\n"
+        f"Created: {item['created_at'][:10]}"
+    )
+
+
 async def _clear_state(state: FSMContext) -> None:
     await state.clear()
 
@@ -145,6 +170,7 @@ async def _show_help(message: Message) -> None:
         "• /list — recent items\n"
         "• /search <query> — find by keyword\n"
         "• /lost /found — filtered lists\n"
+        "• /myitems — manage your reports\n"
         "• /clear — cancel current action",
         reply_markup=MAIN_KEYBOARD,
     )
@@ -290,6 +316,25 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
     await message.answer(text)
 
 
+@dp.message(Command("myitems"))
+async def cmd_my_items(message: Message) -> None:
+    user_id = message.from_user.id
+    items = await api.list_my_items(user_id)
+    if not items:
+        await message.answer("You have no reports yet. Use /new to create one.", reply_markup=MAIN_KEYBOARD)
+        return
+
+    active = [item for item in items if item["lifecycle"] == "active"]
+    resolved = [item for item in items if item["lifecycle"] == "resolved"]
+    deleted = [item for item in items if item["lifecycle"] == "deleted"]
+    await message.answer(
+        f"My Reports\nActive: {len(active)} • Resolved: {len(resolved)} • Deleted: {len(deleted)}",
+        reply_markup=MAIN_KEYBOARD,
+    )
+    for item in items[:20]:
+        await message.answer(_render_item_summary(item), reply_markup=_item_actions_keyboard(item["id"], item["lifecycle"]))
+
+
 @dp.message(Command("new"))
 async def cmd_new(message: Message, state: FSMContext) -> None:
     await _clear_state(state)
@@ -304,6 +349,11 @@ async def keyboard_new_item(message: Message, state: FSMContext) -> None:
 @dp.message(F.text.casefold() == "recent items")
 async def keyboard_recent_items(message: Message) -> None:
     await cmd_list(message)
+
+
+@dp.message(F.text.casefold() == "my items")
+async def keyboard_my_items(message: Message) -> None:
+    await cmd_my_items(message)
 
 
 @dp.message(F.text.casefold() == "search")
@@ -451,6 +501,10 @@ async def review_action(callback: CallbackQuery, state: FSMContext) -> None:
                     f"  why: {reasons or 'similar context'}"
                 )
             await callback.message.answer("Possible smart matches:\n" + "\n".join(match_lines), reply_markup=MAIN_KEYBOARD)
+
+            strong_matches = [m for m in matches if float(m.get("relevance_score", 0)) >= 7.0]
+            if strong_matches:
+                await _notify_strong_matches(callback.bot, item, strong_matches)
         else:
             await callback.message.answer("No smart matches yet. We'll keep checking as new items arrive.", reply_markup=MAIN_KEYBOARD)
 
@@ -469,6 +523,93 @@ async def review_action(callback: CallbackQuery, state: FSMContext) -> None:
         f"Editing {STEP_META[field]['title']}.\n{STEP_META[field]['prompt']}",
         reply_markup=FORM_KEYBOARD,
     )
+    await callback.answer()
+
+
+async def _notify_strong_matches(bot: Bot, source_item: dict, matches: list[dict]) -> None:
+    creator_id = source_item.get("telegram_user_id")
+    notified: set[int] = set()
+    if creator_id:
+        notified.add(int(creator_id))
+
+    for match in matches:
+        owner_id = match.get("telegram_user_id")
+        if not owner_id:
+            continue
+        owner_id = int(owner_id)
+        if owner_id in notified:
+            continue
+        notified.add(owner_id)
+        try:
+            await bot.send_message(
+                owner_id,
+                "🔔 Possible match found for your report.\n"
+                f"Your potential match: {match['title']}\n"
+                f"New report: {source_item['title']}\n"
+                f"Confidence: {match.get('confidence', 'low').title()}\n"
+                f"Why: {', '.join(match.get('reasons', [])[:3]) or 'similar signals'}",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        except Exception:
+            continue
+
+    if creator_id and matches:
+        try:
+            top = matches[0]
+            await bot.send_message(
+                int(creator_id),
+                "🔔 Strong possible match detected for your new report.\n"
+                f"Matched item: {top['title']}\n"
+                f"Confidence: {top.get('confidence', 'low').title()}",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        except Exception:
+            return
+
+
+@dp.callback_query(F.data.startswith("myitem:"))
+async def my_item_action(callback: CallbackQuery) -> None:
+    _, action, item_id_raw = callback.data.split(":")
+    item_id = int(item_id_raw)
+    user_id = callback.from_user.id
+
+    try:
+        if action == "matches":
+            matches = await api.get_matches(item_id)
+            if not matches:
+                await callback.message.answer("No matches yet for this report.", reply_markup=MAIN_KEYBOARD)
+            else:
+                lines = [
+                    f"• {m['title']} ({m['category']}, {m['location']}) — {m['confidence']} ({m['relevance_score']}/10)"
+                    for m in matches[:5]
+                ]
+                await callback.message.answer("Matches:\n" + "\n".join(lines), reply_markup=MAIN_KEYBOARD)
+        elif action == "resolve":
+            item = await api.resolve_item(item_id, user_id)
+            await callback.message.answer(
+                f"✅ Report #{item['id']} marked as resolved.",
+                reply_markup=_item_actions_keyboard(item['id'], item['lifecycle']),
+            )
+        elif action == "reopen":
+            item = await api.reopen_item(item_id, user_id)
+            await callback.message.answer(
+                f"♻️ Report #{item['id']} reopened.",
+                reply_markup=_item_actions_keyboard(item['id'], item['lifecycle']),
+            )
+        elif action == "delete":
+            item = await api.delete_item(item_id, user_id)
+            await callback.message.answer(
+                f"🗑 Report #{item['id']} moved to deleted.",
+                reply_markup=MAIN_KEYBOARD,
+            )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 403:
+            await callback.message.answer("You can manage only your own reports.", reply_markup=MAIN_KEYBOARD)
+        elif exc.response.status_code == 404:
+            await callback.message.answer("Report not found.", reply_markup=MAIN_KEYBOARD)
+        else:
+            await callback.message.answer("Could not complete this action right now.", reply_markup=MAIN_KEYBOARD)
+
     await callback.answer()
 
 

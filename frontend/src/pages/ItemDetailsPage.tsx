@@ -24,6 +24,9 @@ export const ItemDetailsPage = () => {
         <h1>{item.title}</h1>
         <span className={`badge ${item.status}`}>{item.status}</span>
       </div>
+      <p>
+        Lifecycle: <strong>{item.lifecycle}</strong>
+      </p>
       <p>{item.description}</p>
       <ul>
         <li>

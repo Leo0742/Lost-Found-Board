@@ -26,6 +26,8 @@ const formatBackendValidationError = (error: unknown): string => {
 }
 
 export const NewItemPage = () => {
+  const STORAGE_KEY = 'lfb_my_report_ids'
+  const OWNER_KEY = 'lfb_owner_id'
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('Accessories')
@@ -33,6 +35,7 @@ export const NewItemPage = () => {
   const [status, setStatus] = useState<ItemStatus>('lost')
   const [contactName, setContactName] = useState('')
   const [telegramUsername, setTelegramUsername] = useState('')
+  const [ownerTelegramId, setOwnerTelegramId] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
@@ -47,8 +50,21 @@ export const NewItemPage = () => {
         location: location.trim(),
         status,
         contact_name: contactName.trim(),
-        telegram_username: telegramUsername.trim() || undefined
+        telegram_username: telegramUsername.trim() || undefined,
+        telegram_user_id: ownerTelegramId.trim() ? Number(ownerTelegramId.trim()) : undefined
       })
+      const ids = (() => {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as number[]
+        } catch {
+          return []
+        }
+      })()
+      const nextIds = Array.from(new Set([item.id, ...ids]))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextIds))
+      if (item.telegram_user_id) {
+        localStorage.setItem(OWNER_KEY, String(item.telegram_user_id))
+      }
       navigate(`/items/${item.id}`)
     } catch (err) {
       setError(formatBackendValidationError(err))
@@ -101,6 +117,10 @@ export const NewItemPage = () => {
             onChange={(e) => setTelegramUsername(e.target.value)}
             placeholder="@username"
           />
+        </label>
+        <label>
+          Telegram user ID (optional, for managing your reports)
+          <input value={ownerTelegramId} onChange={(e) => setOwnerTelegramId(e.target.value)} placeholder="123456789" />
         </label>
         {error ? <p className="error">{error}</p> : null}
         <button type="submit">Create item</button>
