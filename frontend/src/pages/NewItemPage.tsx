@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { createItem, uploadItemImage, getAuthMe, generateLinkCode } from '../api/items'
+import { createItem, uploadItemImage, getAuthMe, generateLinkCode, fetchCategories, suggestCategory } from '../api/items'
 import { ItemStatus } from '../types/item'
 import { EmptyState, PageHero, SectionCard } from '../components/ui'
 
@@ -29,6 +29,8 @@ export const NewItemPage = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
+  const [categories, setCategories] = useState<string[]>(['Other'])
+  const [categoryHint, setCategoryHint] = useState<{ category: string; confidence: number } | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -36,7 +38,29 @@ export const NewItemPage = () => {
       setLinkedUserId(me.identity?.telegram_user_id ?? null)
       if (me.identity?.telegram_username) setTelegramUsername(`@${me.identity.telegram_username}`)
     }).catch(() => setError('Could not initialize auth session.'))
+    fetchCategories().then((data) => {
+      if (data.length > 0) setCategories(data)
+    }).catch(() => setCategories(['Other']))
   }, [])
+
+  useEffect(() => {
+    const normalized = title.trim()
+    if (normalized.length < 3) {
+      setCategoryHint(null)
+      return
+    }
+    const timer = setTimeout(() => {
+      suggestCategory(normalized)
+        .then((suggestion) => {
+          setCategoryHint({ category: suggestion.category, confidence: suggestion.confidence })
+          if (suggestion.confidence >= 0.45 && suggestion.category !== 'Other') {
+            setCategory(suggestion.category)
+          }
+        })
+        .catch(() => setCategoryHint(null))
+    }, 260)
+    return () => clearTimeout(timer)
+  }, [title])
 
   const completionScore = useMemo(() => {
     const fields = [title, description, category, location, contactName, photoFile ? 'yes' : '']
@@ -79,7 +103,18 @@ export const NewItemPage = () => {
           <form className="form stack" onSubmit={onSubmit}>
             <label>Report type<select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}><option value="lost">Lost item</option><option value="found">Found item</option></select></label>
             <label>Title<input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-            <label>Category<input required minLength={2} maxLength={60} value={category} onChange={(e) => setCategory(e.target.value)} /></label>
+            <label>
+              Category
+              <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                {categories.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            {categoryHint && categoryHint.category !== 'Other' ? (
+              <p className="notice">
+                Suggested category from title: <strong>{categoryHint.category}</strong> ({Math.round(categoryHint.confidence * 100)}%)
+                {' '}<button type="button" className="button-ghost" onClick={() => setCategory(categoryHint.category)}>Use suggestion</button>
+              </p>
+            ) : null}
             <label>Location<input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
             <label>Description<textarea required minLength={5} maxLength={2000} rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
             <label>Contact name<input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} /></label>

@@ -14,7 +14,6 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     PhotoSize,
-    ReplyKeyboardRemove,
 )
 
 from api_client import BackendClient
@@ -293,7 +292,7 @@ async def _ask_step(message: Message, state: FSMContext, step_key: str) -> None:
             suggestion = await api.suggest_category(title)
             suggested = suggestion.get("category")
             confidence = float(suggestion.get("confidence", 0))
-            if suggested and confidence >= 0.55 and suggested.lower() != "other":
+            if suggested and confidence >= 0.35 and suggested.lower() != "other":
                 suggestion_text = f"\nSuggested category: {suggested} ({int(confidence * 100)}% confidence)."
                 await state.update_data(category_suggested=suggested)
         await message.answer(
@@ -388,13 +387,11 @@ async def cmd_help(message: Message, state: FSMContext) -> None:
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message, state: FSMContext) -> None:
     await _clear_state(state)
-    deleted, failed = await _clear_chat_context(message)
+    await _clear_chat_context(message)
     await message.answer(
-        "Session state fully reset.\n"
-        f"Deletion attempt: removed {deleted} recent messages, skipped {failed} (Telegram limits/permissions).",
-        reply_markup=ReplyKeyboardRemove(),
+        "👋 Fresh start. Choose an action below.",
+        reply_markup=MAIN_KEYBOARD,
     )
-    await message.answer("You're back to a clean state. Use /start to reopen the main keyboard.", reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message(Command("whoami"))

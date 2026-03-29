@@ -55,6 +55,18 @@ export const generateLinkCode = async () => {
   return response.data
 }
 
+export const fetchCategories = async () => {
+  const response = await apiClient.get<string[]>('/items/categories')
+  return response.data
+}
+
+export const suggestCategory = async (title: string) => {
+  const response = await apiClient.get<{ category: string; confidence: number; reasons: string[] }>('/items/category-suggest', {
+    params: { title }
+  })
+  return response.data
+}
+
 export const unlinkTelegram = async () => {
   await apiClient.post('/auth/unlink')
 }

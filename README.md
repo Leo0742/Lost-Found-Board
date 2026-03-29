@@ -99,6 +99,7 @@ The codebase is intentionally modular for hackathon speed:
 - `/whoami` to display Telegram account id/username/name and admin role access.
 - `/clear` resets FSM state, clears pending wizard data, removes stale keyboards, and attempts best-effort deletion of recent private-chat messages (with explicit success/failure counts).
 - `/new` category step now supports a richer catalog with inline keyboard pagination and auto-suggested category after title entry.
+- Web report form uses backend category catalog as a real selector and auto-prefills inferred category from title when confidence is high.
 - `/new` wizard includes a photo step (send photo or skip).
 - After `/new`, bot displays matches and sends strong-match notifications to relevant Telegram owners.
 
@@ -272,7 +273,7 @@ Tips:
   - large practical category catalog
   - inline keyboard browsing (paged)
   - auto-suggested category inferred from title (user can accept/change)
-- `/clear` now reports how much cleanup was actually performed, instead of claiming full chat wipe when Telegram limits prevent it.
+- `/clear` now performs best-effort recent-message cleanup and returns to a single fresh-start message with main keyboard.
 - Very low-quality/gibberish-like text submissions are rejected.
 
 ## Media Storage (Local, Persistent)

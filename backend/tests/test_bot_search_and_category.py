@@ -15,6 +15,7 @@ def test_category_inference_examples():
     assert infer_category("student id card").category == "ID Cards"
     assert infer_category("usb flash drive").category == "USB / Storage"
     assert infer_category("black backpack").category == "Backpacks"
+    assert infer_category("dog").category == "Other"
 
 
 def test_fuzzy_search_typo_and_partial():
