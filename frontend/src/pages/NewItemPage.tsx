@@ -1,21 +1,18 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { createItem, uploadItemImage, getAuthMe, generateLinkCode } from '../api/items'
+import { createItem, uploadItemImage, getAuthMe, generateLinkCode, fetchCategories, suggestCategory } from '../api/items'
 import { ItemStatus } from '../types/item'
+import { EmptyState, PageHero, SectionCard } from '../components/ui'
 
 const formatBackendValidationError = (error: unknown): string => {
   if (!axios.isAxiosError(error)) return 'Could not create item. Please review the form.'
   const detail = error.response?.data?.detail
   if (!Array.isArray(detail) || detail.length === 0) return 'Could not create item. Please review the form.'
-  const messages = detail
-    .map((issue: { loc?: Array<string | number>; msg?: string }) => {
-      const field = issue.loc?.[issue.loc.length - 1]
-      if (!field || !issue.msg) return null
-      return `${String(field)}: ${issue.msg}`
-    })
-    .filter((message: string | null): message is string => Boolean(message))
-  return messages.length > 0 ? messages.join('; ') : 'Could not create item. Please review the form.'
+  return detail.map((issue: { loc?: Array<string | number>; msg?: string }) => {
+    const field = issue.loc?.[issue.loc.length - 1]
+    return field && issue.msg ? `${String(field)}: ${issue.msg}` : null
+  }).filter(Boolean).join('; ') || 'Could not create item. Please review the form.'
 }
 
 export const NewItemPage = () => {
@@ -27,29 +24,54 @@ export const NewItemPage = () => {
   const [contactName, setContactName] = useState('')
   const [telegramUsername, setTelegramUsername] = useState('')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
+  const [categories, setCategories] = useState<string[]>(['Other'])
+  const [categoryHint, setCategoryHint] = useState<{ category: string; confidence: number } | null>(null)
   const navigate = useNavigate()
 
-  const loadAuth = async () => {
-    const me = await getAuthMe()
-    setLinkedUserId(me.identity?.telegram_user_id ?? null)
-    if (me.identity?.telegram_username) setTelegramUsername(`@${me.identity.telegram_username}`)
-  }
+  useEffect(() => {
+    getAuthMe().then((me) => {
+      setLinkedUserId(me.identity?.telegram_user_id ?? null)
+      if (me.identity?.telegram_username) setTelegramUsername(`@${me.identity.telegram_username}`)
+    }).catch(() => setError('Could not initialize auth session.'))
+    fetchCategories().then((data) => {
+      if (data.length > 0) setCategories(data)
+    }).catch(() => setCategories(['Other']))
+  }, [])
 
   useEffect(() => {
-    loadAuth().catch(() => setError('Could not initialize auth session.'))
-  }, [])
+    const normalized = title.trim()
+    if (normalized.length < 3) {
+      setCategoryHint(null)
+      return
+    }
+    const timer = setTimeout(() => {
+      suggestCategory(normalized)
+        .then((suggestion) => {
+          setCategoryHint({ category: suggestion.category, confidence: suggestion.confidence })
+          if (suggestion.confidence >= 0.45 && suggestion.category !== 'Other') {
+            setCategory(suggestion.category)
+          }
+        })
+        .catch(() => setCategoryHint(null))
+    }, 260)
+    return () => clearTimeout(timer)
+  }, [title])
+
+  const completionScore = useMemo(() => {
+    const fields = [title, description, category, location, contactName, photoFile ? 'yes' : '']
+    return Math.round((fields.filter((field) => field.trim().length > 0).length / fields.length) * 100)
+  }, [title, description, category, location, contactName, photoFile])
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
-    if (!linkedUserId) {
-      setError('Connect Telegram first so ownership is server-side and synced with bot.')
-      return
-    }
+    setSuccess('')
+    if (!linkedUserId) return setError('Connect Telegram first so ownership is server-side and synced with bot.')
     try {
       const item = await createItem({
         title: title.trim(),
@@ -61,80 +83,75 @@ export const NewItemPage = () => {
         telegram_username: telegramUsername.trim() || undefined,
         ...(photoFile ? await uploadItemImage(photoFile) : {})
       })
-      navigate(`/items/${item.id}`)
+      setSuccess('Report created successfully. Redirecting...')
+      setTimeout(() => navigate(`/items/${item.id}`), 450)
     } catch (err) {
       setError(formatBackendValidationError(err))
     }
   }
 
   return (
-    <section>
-      <h1>Post Lost or Found Item</h1>
-      {!linkedUserId ? (
-        <article className="card">
-          <h3>Connect Telegram first</h3>
-          <p>Ownership is now server-side and Telegram-linked. Generate a code and send it to the bot.</p>
-          <button
-            type="button"
-            onClick={async () => {
-              const data = await generateLinkCode()
-              setLinkCode(data.code)
-            }}
-          >Generate link code</button>
-          {linkCode ? <p>Send to bot: <strong>/link {linkCode}</strong></p> : null}
-        </article>
-      ) : null}
-      <form className="form" onSubmit={onSubmit}>
-        <label>
-          Status
-          <select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
-            <option value="lost">Lost</option>
-            <option value="found">Found</option>
-          </select>
-        </label>
-        <label>
-          Title
-          <input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-        <label>
-          Category
-          <input required minLength={2} maxLength={60} value={category} onChange={(e) => setCategory(e.target.value)} />
-        </label>
-        <label>
-          Location
-          <input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} />
-        </label>
-        <label>
-          Description
-          <textarea required minLength={5} maxLength={2000} rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </label>
-        <label>
-          Contact name
-          <input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} />
-        </label>
-        <label>
-          Telegram username (optional)
-          <input maxLength={80} value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" />
-        </label>
-        <label>
-          Photo (optional)
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(e) => {
-              const file = e.target.files?.[0] || null
-              setPhotoFile(file)
-              if (!file) return setPhotoPreview(null)
-              const reader = new FileReader()
-              reader.onload = () => setPhotoPreview(String(reader.result))
-              reader.readAsDataURL(file)
-            }}
-          />
-        </label>
-        {photoPreview ? <div><img src={photoPreview} alt="Selected preview" style={{ maxWidth: '280px', borderRadius: '8px' }} /></div> : null}
-        {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={!linkedUserId}>Create item</button>
-      </form>
+    <section className="stack">
+      <PageHero
+        title="Create a high-quality report"
+        subtitle="Structured entry improves smart matching, moderation trust, and claim success rates."
+        stats={[{ label: 'Completion', value: `${completionScore}%` }, { label: 'Ownership', value: linkedUserId ? 'Linked' : 'Not linked' }]}
+      />
+
+      <div className="layout-split">
+        <SectionCard title="Report form" subtitle="Complete each block for the best match confidence.">
+          <form className="form stack" onSubmit={onSubmit}>
+            <label>Report type<select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}><option value="lost">Lost item</option><option value="found">Found item</option></select></label>
+            <label>Title<input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+            <label>
+              Category
+              <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                {categories.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            {categoryHint && categoryHint.category !== 'Other' ? (
+              <p className="notice">
+                Suggested category from title: <strong>{categoryHint.category}</strong> ({Math.round(categoryHint.confidence * 100)}%)
+                {' '}<button type="button" className="button-ghost" onClick={() => setCategory(categoryHint.category)}>Use suggestion</button>
+              </p>
+            ) : null}
+            <label>Location<input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
+            <label>Description<textarea required minLength={5} maxLength={2000} rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+            <label>Contact name<input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} /></label>
+            <label>Telegram username (optional)<input maxLength={80} value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" /></label>
+            <label>Photo (optional)
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                setPhotoFile(file)
+                if (!file) return setPhotoPreview(null)
+                const reader = new FileReader(); reader.onload = () => setPhotoPreview(String(reader.result)); reader.readAsDataURL(file)
+              }} />
+            </label>
+            {photoPreview ? <img src={photoPreview} alt="Selected preview" className="detail-image" /> : null}
+            {error ? <p className="notice error">{error}</p> : null}
+            {success ? <p className="notice success">{success}</p> : null}
+            <div className="actions-row"><button type="submit" disabled={!linkedUserId}>Create report</button><button className="button-neutral" type="button" onClick={() => navigate('/')}>Cancel</button></div>
+          </form>
+        </SectionCard>
+
+        <div className="stack sticky-side">
+          <SectionCard title="Submission checklist" subtitle="Aim for high confidence matching.">
+            <div className="timeline-list">
+              <div className="timeline-item">Clear title and category</div>
+              <div className="timeline-item">Exact location context</div>
+              <div className="timeline-item">Distinctive description details</div>
+              <div className="timeline-item">Photo for visual verification</div>
+            </div>
+          </SectionCard>
+
+          {!linkedUserId ? (
+            <SectionCard title="Link Telegram" subtitle="Required for secure ownership and synced bot actions.">
+              <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>Generate secure link code</button>
+              {linkCode ? <p className="notice">Send this in Telegram: <strong>/link {linkCode}</strong></p> : null}
+            </SectionCard>
+          ) : <EmptyState title="Telegram linked" subtitle="You can submit and manage this report across web and bot." />}
+        </div>
+      </div>
     </section>
   )
 }

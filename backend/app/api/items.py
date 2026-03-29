@@ -8,6 +8,7 @@ from app.schemas.item import (
     ClaimAction,
     ClaimCreate,
     ClaimRead,
+    CategorySuggestionRead,
     ImageUploadResult,
     ItemCreate,
     ItemFlagRequest,
@@ -18,6 +19,7 @@ from app.schemas.item import (
     ItemUpdate,
     ItemVerificationAction,
     MatchResult,
+    SmartSearchResultRead,
 )
 from app.services.item_service import ItemService
 from app.models.claim import ClaimStatus
@@ -84,6 +86,28 @@ def list_items_admin(
 def search_items(q: str = Query(min_length=1), db: Session = Depends(get_db)) -> list[ItemRead]:
     service = ItemService(db)
     return service.list_items(q=q)
+
+
+@router.get("/search-smart", response_model=list[SmartSearchResultRead])
+def smart_search_items(
+    q: str = Query(min_length=1),
+    limit: int = Query(default=8, ge=1, le=12),
+    db: Session = Depends(get_db),
+) -> list[SmartSearchResultRead]:
+    service = ItemService(db)
+    return service.smart_search(query=q, limit=limit)
+
+
+@router.get("/categories", response_model=list[str])
+def get_categories(db: Session = Depends(get_db)) -> list[str]:
+    service = ItemService(db)
+    return service.list_categories()
+
+
+@router.get("/category-suggest", response_model=CategorySuggestionRead)
+def suggest_category(title: str = Query(min_length=1), db: Session = Depends(get_db)) -> CategorySuggestionRead:
+    service = ItemService(db)
+    return service.suggest_category(title)
 
 
 @router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])

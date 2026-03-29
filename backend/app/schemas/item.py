@@ -70,6 +70,18 @@ class MatchResult(BaseModel):
     image_path: str | None = None
 
 
+class SmartSearchResultRead(BaseModel):
+    item: ItemRead
+    relevance_score: float
+    reasons: list[str] = Field(default_factory=list)
+
+
+class CategorySuggestionRead(BaseModel):
+    category: str
+    confidence: float
+    reasons: list[str] = Field(default_factory=list)
+
+
 class ItemOwnerAction(BaseModel):
     telegram_user_id: int | None = None
 

@@ -44,6 +44,11 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
     input_field_placeholder="Choose an action",
 )
+STATUS_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="lost"), KeyboardButton(text="found")], [KeyboardButton(text="Back"), KeyboardButton(text="Cancel")]],
+    resize_keyboard=True,
+    input_field_placeholder="Choose lost/found",
+)
 
 FORM_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text="Back"), KeyboardButton(text="Cancel")]],
@@ -90,7 +95,7 @@ STEP_META = {
     "status": {
         "state": NewItemForm.status,
         "title": "Status",
-        "prompt": "Please enter item status: lost or found.",
+        "prompt": "Choose item status: lost or found.",
     },
     "title": {
         "state": NewItemForm.title,
@@ -100,7 +105,7 @@ STEP_META = {
     "category": {
         "state": NewItemForm.category,
         "title": "Category",
-        "prompt": "Please enter the category (e.g. Electronics, Bags, Accessories).",
+        "prompt": "Choose category from the keyboard or type your own.",
     },
     "location": {
         "state": NewItemForm.location,
@@ -123,6 +128,8 @@ STEP_META = {
         "prompt": "Send a photo for this item, or tap Skip Photo.",
     },
 }
+
+CATEGORY_PAGE_SIZE = 9
 
 
 def _review_keyboard() -> InlineKeyboardMarkup:
@@ -206,16 +213,31 @@ async def _cancel_wizard(message: Message, state: FSMContext) -> None:
     await message.answer("Current action cleared. You can start again.", reply_markup=MAIN_KEYBOARD)
 
 
+async def _clear_chat_context(message: Message) -> tuple[int, int]:
+    if not message.chat or message.chat.type != "private":
+        return 0, 0
+    deleted = 0
+    failed = 0
+    min_id = max(1, message.message_id - 45)
+    for msg_id in range(message.message_id, min_id - 1, -1):
+        try:
+            await message.bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            deleted += 1
+        except Exception:
+            failed += 1
+    return deleted, failed
+
+
 async def _show_help(message: Message) -> None:
     await message.answer(
         "Use the menu or keyboard:\n"
-        "• /new — post an item\n"
+        "• /new — guided multi-step report flow\n"
         "• /list — recent items\n"
-        "• /search <query> — find by keyword\n"
+        "• /search <query> — typo-tolerant smart search\n"
         "• /lost /found — filtered lists\n"
-        "• /myitems — manage your reports\n"
-        "• /claims — track claim workflow\n"
-        "• /link <code> — connect website session\n"
+        "• /myitems — dashboard summary of your reports\n"
+        "• /claims — review your claim workflow\n"
+        "• /link <code> — connect website session securely\n"
         "• /flag <item_id> <reason> — report abuse\n"
         "• /whoami — show your account details\n"
         "• /clear — cancel current action",
@@ -237,13 +259,52 @@ def _step_header(step_key: str) -> str:
     return f"Step {step_number}/{total} — {STEP_META[step_key]['title']}"
 
 
+def _category_keyboard(categories: list[str], page: int = 0, suggested: str | None = None) -> InlineKeyboardMarkup:
+    start = page * CATEGORY_PAGE_SIZE
+    chunk = categories[start:start + CATEGORY_PAGE_SIZE]
+    rows: list[list[InlineKeyboardButton]] = []
+    if suggested and suggested in categories:
+        rows.append([InlineKeyboardButton(text=f"✨ Use suggested: {suggested}", callback_data=f"cat:choose:{suggested}")])
+    for idx in range(0, len(chunk), 3):
+        row_items = chunk[idx:idx + 3]
+        rows.append([InlineKeyboardButton(text=name, callback_data=f"cat:choose:{name}") for name in row_items])
+    nav: list[InlineKeyboardButton] = []
+    if start > 0:
+        nav.append(InlineKeyboardButton(text="◀ Prev", callback_data=f"cat:page:{page - 1}"))
+    if start + CATEGORY_PAGE_SIZE < len(categories):
+        nav.append(InlineKeyboardButton(text="Next ▶", callback_data=f"cat:page:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def _ask_step(message: Message, state: FSMContext, step_key: str) -> None:
     await state.set_state(STEP_META[step_key]["state"])
-    keyboard = PHOTO_STEP_KEYBOARD if step_key == "photo" else FORM_KEYBOARD
-    await message.answer(
-        f"{_step_header(step_key)}\n{STEP_META[step_key]['prompt']}",
-        reply_markup=keyboard,
-    )
+    keyboard = PHOTO_STEP_KEYBOARD if step_key == "photo" else STATUS_KEYBOARD if step_key == "status" else FORM_KEYBOARD
+    prompt = f"{_step_header(step_key)}\n{STEP_META[step_key]['prompt']}"
+    if step_key == "category":
+        data = await state.get_data()
+        title = str(data.get("title", "")).strip()
+        categories = await api.get_categories()
+        suggestion_text = ""
+        suggested = None
+        if title:
+            suggestion = await api.suggest_category(title)
+            suggested = suggestion.get("category")
+            confidence = float(suggestion.get("confidence", 0))
+            if suggested and confidence >= 0.35 and suggested.lower() != "other":
+                suggestion_text = f"\nSuggested category: {suggested} ({int(confidence * 100)}% confidence)."
+                await state.update_data(category_suggested=suggested)
+        await message.answer(
+            f"{prompt}{suggestion_text}",
+            reply_markup=keyboard,
+        )
+        await message.answer(
+            "Tap a category below or type your own custom category.",
+            reply_markup=_category_keyboard(categories, page=0, suggested=suggested),
+        )
+        return
+    await message.answer(prompt, reply_markup=keyboard)
 
 
 def _build_review_text(data: dict) -> str:
@@ -325,7 +386,12 @@ async def cmd_help(message: Message, state: FSMContext) -> None:
 
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message, state: FSMContext) -> None:
-    await _cancel_wizard(message, state)
+    await _clear_state(state)
+    await _clear_chat_context(message)
+    await message.answer(
+        "👋 Fresh start. Choose an action below.",
+        reply_markup=MAIN_KEYBOARD,
+    )
 
 
 @dp.message(Command("whoami"))
@@ -386,11 +452,16 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
     if not command.args:
         await message.answer("Usage: /search <query>")
         return
-    items = await api.search_items(command.args)
+    items = await api.search_items_smart(command.args, limit=6)
     if not items:
-        await message.answer("No matching items found.")
+        await message.answer("No good matches found. Try another keyword, location, or shorter phrase.")
         return
-    text = "\n".join(f"• [{i['status']}] {i['title']} - {i['location']}" for i in items[:10])
+    text = "\n\n".join(
+        f"• [{row['item']['status'].upper()}] {row['item']['title']} — {row['item']['location']}\n"
+        f"  score: {row['relevance_score']}/100\n"
+        f"  why: {', '.join(row.get('reasons', [])[:2]) or 'fuzzy/token match'}"
+        for row in items
+    )
     await message.answer(text)
 
 
@@ -427,6 +498,12 @@ async def cmd_claims(message: Message) -> None:
     if not claims:
         await message.answer("No claim requests yet.", reply_markup=MAIN_KEYBOARD)
         return
+    incoming = [claim for claim in claims if claim.get("owner_telegram_user_id") == message.from_user.id]
+    outgoing = [claim for claim in claims if claim.get("requester_telegram_user_id") == message.from_user.id]
+    await message.answer(
+        f"Claim Dashboard\nIncoming: {len(incoming)} • Outgoing: {len(outgoing)} • Total: {len(claims)}",
+        reply_markup=MAIN_KEYBOARD,
+    )
     for claim in claims[:20]:
         text = (
             f"Claim #{claim['id']} — {claim['status'].upper()}\n"
@@ -446,7 +523,10 @@ async def cmd_claims(message: Message) -> None:
 async def cmd_link(message: Message, command: CommandObject) -> None:
     code = (command.args or "").strip().upper()
     if not code:
-        await message.answer("Usage: /link <code>\nGet the code from website → Connect Telegram.", reply_markup=MAIN_KEYBOARD)
+        await message.answer(
+            "Usage: /link <code>\n\nWebsite flow:\n1) Open My Reports or Report Item.\n2) Generate secure link code.\n3) Paste here using /link.",
+            reply_markup=MAIN_KEYBOARD,
+        )
         return
     try:
         await api.confirm_web_link(
@@ -458,7 +538,10 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
     except httpx.HTTPError:
         await message.answer("Could not link this code. It may be expired. Generate a new code on the website.", reply_markup=MAIN_KEYBOARD)
         return
-    await message.answer("✅ Website linked to your Telegram account. Reload My Reports on the website.", reply_markup=MAIN_KEYBOARD)
+    await message.answer(
+        "✅ Website linked to your Telegram account.\nReload My Reports on the website to see synced ownership and claims.",
+        reply_markup=MAIN_KEYBOARD,
+    )
 
 
 @dp.message(Command("flag"))
@@ -558,9 +641,37 @@ async def form_title(message: Message, state: FSMContext) -> None:
     await _store_and_continue(message, state, "title", title)
 
 
+@dp.callback_query(NewItemForm.category, F.data.startswith("cat:"))
+async def category_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    if not callback.data:
+        await callback.answer()
+        return
+    payload = callback.data.split(":", maxsplit=2)
+    if len(payload) != 3:
+        await callback.answer("Invalid category action", show_alert=True)
+        return
+    action, value = payload[1], payload[2]
+    categories = await api.get_categories()
+    if action == "page":
+        page = max(0, int(value))
+        data = await state.get_data()
+        suggested = data.get("category_suggested")
+        await callback.message.edit_reply_markup(reply_markup=_category_keyboard(categories, page=page, suggested=suggested))
+        await callback.answer()
+        return
+    if action == "choose":
+        await _store_and_continue(callback.message, state, "category", value)
+        await callback.answer(f"Category selected: {value}")
+        return
+    await callback.answer()
+
+
 @dp.message(NewItemForm.category)
 async def form_category(message: Message, state: FSMContext) -> None:
     category = message.text.strip()
+    categories = await api.get_categories()
+    lookup = {name.lower(): name for name in categories}
+    category = lookup.get(category.lower(), category)
     if not await _check_length(message, "category", category):
         return
     await _store_and_continue(message, state, "category", category)

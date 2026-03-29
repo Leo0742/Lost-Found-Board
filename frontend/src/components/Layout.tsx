@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { getAuthMe } from '../api/items'
 
 export const Layout = () => {
@@ -33,19 +33,17 @@ export const Layout = () => {
     <div className="app-shell">
       <header className="header">
         <div className="container">
-          <Link className="brand" to="/">
-            Lost & Found Board
-          </Link>
+          <Link className="brand" to="/">Lost & Found Board</Link>
           <nav className="top-nav">
-            <Link to="/">Items</Link>
-            <Link to="/new">Report Item</Link>
-            <Link to="/my-reports">My Reports</Link>
-            {role ? <Link to="/admin">Moderation</Link> : null}
+            <NavLink to="/">Items</NavLink>
+            <NavLink to="/new">Report Item</NavLink>
+            <NavLink to="/my-reports">My Reports</NavLink>
+            {role ? <NavLink to="/admin">Moderation</NavLink> : null}
           </nav>
           {role ? (
             <div className={`role-chip ${role}`}>
-              <span>{role === 'admin' ? 'Admin' : 'Moderator'}</span>
-              <small>Signed in as {identityLabel}</small>
+              <span>{role === 'admin' ? 'Admin Console' : 'Moderator Console'}</span>
+              <small>{identityLabel}</small>
             </div>
           ) : null}
         </div>

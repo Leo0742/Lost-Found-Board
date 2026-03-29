@@ -11,6 +11,8 @@ from app.models.claim import Claim, ClaimStatus
 from app.schemas.item import ItemCreate, ItemUpdate, MatchResult
 from app.core.config import get_settings
 from app.services.matching import score_match_detailed
+from app.services.catalog import CATEGORY_CATALOG, infer_category
+from app.services.search_utils import rank_items
 
 
 class ItemService:
@@ -113,6 +115,32 @@ class ItemService:
             query = query.where(Item.title.ilike(like_q) | Item.description.ilike(like_q) | Item.location.ilike(like_q))
         query = query.order_by(Item.created_at.desc())
         return list(self.db.scalars(query).all())
+
+    def list_categories(self) -> list[str]:
+        return CATEGORY_CATALOG
+
+    def suggest_category(self, title: str) -> dict:
+        suggestion = infer_category(title)
+        return {
+            "category": suggestion.category,
+            "confidence": round(suggestion.confidence, 2),
+            "reasons": suggestion.reasons,
+        }
+
+    def smart_search(self, query: str, limit: int = 8) -> list[dict]:
+        base_items = self.list_items(
+            lifecycle=ItemLifecycle.ACTIVE,
+            moderation_status=ModerationStatus.APPROVED,
+        )
+        ranked = rank_items(query, base_items, limit=limit)
+        return [
+            {
+                "item": row.item,
+                "relevance_score": row.score,
+                "reasons": row.reasons,
+            }
+            for row in ranked
+        ]
 
     def get_item(self, item_id: int) -> Item | None:
         return self.db.get(Item, item_id)
