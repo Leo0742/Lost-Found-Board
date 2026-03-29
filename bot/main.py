@@ -1,4 +1,5 @@
 from aiogram import Bot, Dispatcher, F
+import sys
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -7,7 +8,6 @@ from aiogram.types import Message
 from api_client import BackendClient
 from config import settings
 
-bot = Bot(token=settings.telegram_bot_token)
 dp = Dispatcher()
 api = BackendClient(settings.api_base_url)
 
@@ -145,5 +145,20 @@ async def fallback(message: Message) -> None:
     await message.answer("Try /new, /list, /search <keyword>, /lost, /found")
 
 
+def create_bot() -> Bot:
+    token = settings.telegram_bot_token
+    if not token or token == "replace_me":
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN is required to run the bot. Set it in .env and start compose with --profile bot."
+        )
+    return Bot(token=token)
+
+
 if __name__ == "__main__":
+    try:
+        bot = create_bot()
+    except RuntimeError as exc:
+        print(f"[bot-config-error] {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
     dp.run_polling(bot)

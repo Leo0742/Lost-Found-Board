@@ -72,18 +72,35 @@ The codebase is intentionally modular for hackathon speed:
 
 ## Quick Start (Docker Compose)
 
-1. Copy env values:
+1. Reset containers and DB volume (recommended after failed migration attempts):
+   ```bash
+   docker compose down -v
+   ```
+2. Copy env values:
    ```bash
    cp .env.example .env
    ```
-2. Add your real Telegram token in `.env` (`TELEGRAM_BOT_TOKEN`).
-3. Run:
+3. (Optional for web/api only) keep `TELEGRAM_BOT_TOKEN=replace_me`.
+4. Start core stack (db + backend + frontend):
    ```bash
    docker compose up --build
    ```
-4. Open:
+5. Open:
    - Web UI: `http://localhost`
    - Backend docs: `http://localhost/api/docs` (proxied)
+
+### Start Telegram bot (optional)
+
+1. Set a real token in `.env`:
+   ```dotenv
+   TELEGRAM_BOT_TOKEN=<your-real-token>
+   ```
+2. Start with bot profile enabled:
+   ```bash
+   docker compose --profile bot up --build
+   ```
+
+If the bot profile is enabled without a valid token, the bot container exits immediately with a clear `TELEGRAM_BOT_TOKEN is required` message.
 
 ## Local Development (without Docker)
 

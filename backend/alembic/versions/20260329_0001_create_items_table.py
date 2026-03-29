@@ -1,12 +1,13 @@
 """create items table
 
 Revision ID: 20260329_0001
-Revises: 
+Revises:
 Create Date: 2026-03-29
 """
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "20260329_0001"
@@ -15,7 +16,9 @@ branch_labels = None
 depends_on = None
 
 
-status_enum = sa.Enum("lost", "found", name="item_status")
+# We explicitly create/drop this PostgreSQL enum in migration lifecycle.
+# create_type=False prevents op.create_table from emitting a duplicate CREATE TYPE.
+status_enum = postgresql.ENUM("lost", "found", name="item_status", create_type=False)
 
 
 def upgrade() -> None:
