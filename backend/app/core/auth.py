@@ -1,7 +1,8 @@
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from secrets import token_hex
 
-from fastapi import Cookie, Depends
+from fastapi import Cookie, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -51,3 +52,57 @@ def get_authenticated_telegram_user_id(session: WebAuthSession | None = Depends(
     if not session or not session.telegram_user_id:
         return None
     return session.telegram_user_id
+
+
+class AdminRole(StrEnum):
+    ADMIN = "admin"
+    MODERATOR = "moderator"
+
+
+def _normalized_username(username: str | None) -> str | None:
+    if not username:
+        return None
+    value = username.strip().lstrip("@").lower()
+    return value or None
+
+
+def get_admin_role_for_identity(telegram_user_id: int | None, telegram_username: str | None) -> AdminRole | None:
+    settings = get_settings()
+    if telegram_user_id and telegram_user_id in settings.admin_telegram_user_id_set:
+        return AdminRole.ADMIN
+    username = _normalized_username(telegram_username)
+    if username and username in settings.admin_telegram_username_set:
+        return AdminRole.MODERATOR
+    return None
+
+
+def get_admin_role_for_session(session: WebAuthSession | None) -> AdminRole | None:
+    if not session:
+        return None
+    return get_admin_role_for_identity(session.telegram_user_id, session.telegram_username)
+
+
+def require_admin_or_moderator(
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    x_admin_secret: str | None = Header(default=None),
+) -> AdminRole:
+    role = get_admin_role_for_session(session)
+    if role:
+        return role
+    settings = get_settings()
+    if settings.allow_admin_secret_fallback and x_admin_secret and x_admin_secret == settings.admin_secret:
+        return AdminRole.ADMIN
+    raise HTTPException(status_code=403, detail="Admin access denied")
+
+
+def require_admin(
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    x_admin_secret: str | None = Header(default=None),
+) -> AdminRole:
+    role = get_admin_role_for_session(session)
+    if role == AdminRole.ADMIN:
+        return role
+    settings = get_settings()
+    if settings.allow_admin_secret_fallback and x_admin_secret and x_admin_secret == settings.admin_secret:
+        return AdminRole.ADMIN
+    raise HTTPException(status_code=403, detail="Admin access denied")

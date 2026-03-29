@@ -46,7 +46,7 @@ The codebase is intentionally modular for hackathon speed:
 - Lifecycle management from UI (`active`, `resolved`, `deleted`) for owned reports.
 - Optional photo upload with preview on report creation.
 - Photo thumbnails on cards and larger media view on details/matches.
-- Admin moderation page at `/admin` (secret-protected actions).
+- Admin moderation page at `/admin` (Telegram-linked role checks).
 - Responsive layout for phone/laptop.
 
 ### Backend API
@@ -63,7 +63,7 @@ The codebase is intentionally modular for hackathon speed:
 - `POST /api/items/upload-image` (multipart image upload)
 - `GET /api/items/search?q=...`
 - `GET /api/items/matches/{id}`
-- `GET /api/items/admin/items` (requires `X-Admin-Secret`)
+- `GET /api/items/admin/items` (requires Telegram-linked admin/moderator session)
 - `POST /api/items/admin/items/{id}/moderate` (approve/reject/flag/unflag)
 - `POST /api/items/admin/items/{id}/verify`
 - `POST /api/items/admin/items/{id}/lifecycle` (resolve/reopen/delete)
@@ -76,9 +76,10 @@ The codebase is intentionally modular for hackathon speed:
 - Auth/session endpoints:
   - `POST /api/auth/session`
   - `GET /api/auth/me`
-  - `POST /api/auth/link-code`
-  - `POST /api/auth/link/confirm` (used by bot `/link`)
-  - `POST /api/auth/logout`
+- `POST /api/auth/link-code`
+- `POST /api/auth/link/confirm` (used by bot `/link`)
+- `POST /api/auth/logout`
+- `POST /api/auth/unlink`
 
 ### Telegram assistant
 - `/start`
@@ -91,6 +92,7 @@ The codebase is intentionally modular for hackathon speed:
 - `/link <code>` to bind website session with Telegram account.
 - `/flag <item_id> <reason>` to report abuse/spam.
 - `/claims` to track claim/contact workflow.
+- `/whoami` to display Telegram account id/username/name and admin role access.
 - `/clear` cancels ongoing flows and resets state.
 - `/new` wizard includes a photo step (send photo or skip).
 - After `/new`, bot displays matches and sends strong-match notifications to relevant Telegram owners.
@@ -153,7 +155,7 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Matching/search defaults to active reports.
 - Resolved/deleted reports are excluded from normal match candidate pools.
 - Ownership-sensitive actions (`resolve/reopen/delete`) are server-authorized using linked Telegram identity (web session) or bot Telegram id.
-- Raw `DELETE /api/items/{id}` is admin-only (`X-Admin-Secret`) and should be treated as moderation-only.
+- Raw `DELETE /api/items/{id}` is admin-only (Telegram-linked role check) and should be treated as moderation-only.
 
 ## Moderation & Trust/Safety
 
@@ -171,11 +173,47 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Completing a claim resolves both linked items.
 - Marking not-match prevents that pair from being surfaced again as a primary match candidate.
 
-## Admin Access (Lightweight)
+## Admin & Moderator Access (Telegram-linked, server-side)
 
-- Admin APIs require header: `X-Admin-Secret: <ADMIN_SECRET>`.
-- Admin secret is configured by env var `ADMIN_SECRET`.
-- Website admin UI is available at `/admin` and requires entering the secret before loading data.
+- Admin authorization is based on linked Telegram identity from the web session cookie.
+- Backend checks env-configured allowlists:
+  - `ADMIN_TELEGRAM_USER_IDS` (primary trusted identifier)
+  - `ADMIN_TELEGRAM_USERNAMES` (fallback convenience)
+- Role mapping in this project:
+  - `admin`: Telegram user ID matched
+  - `moderator`: Telegram username matched (when ID did not match)
+- `/admin` uses Telegram-linked session flow. No password-style admin login is required.
+- Backend is the source of truth for access decisions.
+- Optional fallback for development only: `ALLOW_ADMIN_SECRET_FALLBACK=true` with `X-Admin-Secret`.
+- Web navigation shows **Moderation** entry and admin role chip only for authorized linked admin/moderator sessions.
+
+### Configure in `.env`
+
+```dotenv
+ADMIN_TELEGRAM_USER_IDS=1325016161,987654321
+ADMIN_TELEGRAM_USERNAMES=Leo0742,mod_user
+```
+
+Tips:
+- Use IDs wherever possible because usernames can change.
+- Username matching is case-insensitive and supports optional `@`.
+
+### How to find your Telegram user ID
+
+- Use Telegram helper bot like `@userinfobot`, or
+- Log incoming Telegram updates in your own bot and read `from.id`.
+
+### Local admin access test
+
+1. Put your Telegram ID into `ADMIN_TELEGRAM_USER_IDS` in `.env`.
+2. Start stack:
+   ```bash
+   docker compose up --build
+   ```
+3. Open `/admin`.
+4. If prompted, generate link code and send `/link <code>` to your bot.
+5. Reload `/admin` and verify access is granted.
+6. Remove your ID/username from env and restart; `/admin` should show access denied and not load moderation data.
 
 ## Anti-Spam Rules
 

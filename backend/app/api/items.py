@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_authenticated_telegram_user_id
+from app.core.auth import AdminRole, get_authenticated_telegram_user_id, require_admin, require_admin_or_moderator
 from app.db.session import get_db
 from app.models.item import ItemLifecycle, ItemStatus, ModerationStatus
-from app.core.config import get_settings
 from app.schemas.item import (
     ClaimAction,
     ClaimCreate,
@@ -24,13 +23,6 @@ from app.services.item_service import ItemService
 from app.models.claim import ClaimStatus
 
 router = APIRouter(prefix="/api/items", tags=["items"])
-
-
-def require_admin(x_admin_secret: str | None = Header(default=None)) -> str:
-    settings = get_settings()
-    if not x_admin_secret or x_admin_secret != settings.admin_secret:
-        raise HTTPException(status_code=403, detail="Admin access denied")
-    return "admin"
 
 
 @router.post("", response_model=ItemRead, status_code=status.HTTP_201_CREATED)
@@ -81,7 +73,7 @@ def list_items_admin(
     lifecycle: ItemLifecycle | None = Query(default=None),
     moderation_status: ModerationStatus | None = Query(default=None),
     q: str | None = Query(default=None),
-    _: str = Depends(require_admin),
+    _: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
 ) -> list[ItemRead]:
     service = ItemService(db)
@@ -92,6 +84,23 @@ def list_items_admin(
 def search_items(q: str = Query(min_length=1), db: Session = Depends(get_db)) -> list[ItemRead]:
     service = ItemService(db)
     return service.list_items(q=q)
+
+
+@router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])
+def list_my_items(telegram_user_id: int, db: Session = Depends(get_db)) -> list[ItemRead]:
+    service = ItemService(db)
+    return service.list_my_items(telegram_user_id)
+
+
+@router.get("/me", response_model=list[ItemRead])
+def list_my_items_from_session(
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> list[ItemRead]:
+    if not auth_telegram_user_id:
+        raise HTTPException(status_code=401, detail="Connect Telegram first")
+    service = ItemService(db)
+    return service.list_my_items(auth_telegram_user_id)
 
 
 @router.get("/{item_id}", response_model=ItemRead)
@@ -113,29 +122,12 @@ def update_item(item_id: int, payload: ItemUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_item(item_id: int, _: str = Depends(require_admin), db: Session = Depends(get_db)) -> None:
+def delete_item(item_id: int, _: AdminRole = Depends(require_admin), db: Session = Depends(get_db)) -> None:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     service.delete_item(item)
-
-
-@router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])
-def list_my_items(telegram_user_id: int, db: Session = Depends(get_db)) -> list[ItemRead]:
-    service = ItemService(db)
-    return service.list_my_items(telegram_user_id)
-
-
-@router.get("/me", response_model=list[ItemRead])
-def list_my_items_from_session(
-    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
-    db: Session = Depends(get_db),
-) -> list[ItemRead]:
-    if not auth_telegram_user_id:
-        raise HTTPException(status_code=401, detail="Connect Telegram first")
-    service = ItemService(db)
-    return service.list_my_items(auth_telegram_user_id)
 
 
 def _actor_telegram_id(payload: ItemOwnerAction, auth_telegram_user_id: int | None) -> int:
@@ -206,21 +198,21 @@ def flag_item(item_id: int, payload: ItemFlagRequest, db: Session = Depends(get_
 def moderate_item(
     item_id: int,
     payload: ItemModerationAction,
-    admin_name: str = Depends(require_admin),
+    role: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return service.moderate_item(item, payload.action, moderator=admin_name, reason=payload.reason)
+    return service.moderate_item(item, payload.action, moderator=role.value, reason=payload.reason)
 
 
 @router.post("/admin/items/{item_id}/verify", response_model=ItemRead)
 def verify_item(
     item_id: int,
     payload: ItemVerificationAction,
-    _: str = Depends(require_admin),
+    _: AdminRole = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)
@@ -234,7 +226,7 @@ def verify_item(
 def admin_lifecycle(
     item_id: int,
     payload: ItemLifecycleAdminAction,
-    _: str = Depends(require_admin),
+    _: AdminRole = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)

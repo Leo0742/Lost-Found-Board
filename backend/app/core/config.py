@@ -14,12 +14,37 @@ class Settings(BaseSettings):
     media_url_prefix: str = "/media"
     media_max_bytes: int = 5 * 1024 * 1024
     admin_secret: str = "change-me-admin-secret"
+    allow_admin_secret_fallback: bool = False
+    admin_telegram_user_ids: str = ""
+    admin_telegram_usernames: str = ""
     create_rate_limit_window_minutes: int = 10
     create_rate_limit_max_items: int = 5
     web_session_ttl_days: int = 30
     web_link_code_ttl_minutes: int = 10
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def admin_telegram_user_id_set(self) -> set[int]:
+        ids: set[int] = set()
+        for part in self.admin_telegram_user_ids.split(","):
+            value = part.strip()
+            if not value:
+                continue
+            try:
+                ids.add(int(value))
+            except ValueError:
+                continue
+        return ids
+
+    @property
+    def admin_telegram_username_set(self) -> set[str]:
+        usernames: set[str] = set()
+        for part in self.admin_telegram_usernames.split(","):
+            value = part.strip().lstrip("@").lower()
+            if value:
+                usernames.add(value)
+        return usernames
 
 
 @lru_cache

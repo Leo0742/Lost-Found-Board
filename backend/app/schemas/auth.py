@@ -22,6 +22,8 @@ class LinkCodeResponse(BaseModel):
 class WhoAmIResponse(BaseModel):
     linked: bool
     identity: TelegramIdentity | None = None
+    admin_access: bool = False
+    role: str | None = None
 
 
 class LinkConfirmRequest(BaseModel):
@@ -29,3 +31,8 @@ class LinkConfirmRequest(BaseModel):
     telegram_user_id: int
     telegram_username: str | None = None
     display_name: str | None = Field(default=None, max_length=120)
+
+
+class TelegramAdminAccessResponse(BaseModel):
+    admin_access: bool
+    role: str | None = None

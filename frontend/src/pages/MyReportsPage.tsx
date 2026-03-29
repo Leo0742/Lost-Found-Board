@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { claimAction, fetchMyItems, generateLinkCode, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem } from '../api/items'
+import { AxiosError } from 'axios'
+import { claimAction, fetchMyItems, generateLinkCode, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem, unlinkTelegram } from '../api/items'
 import { Claim, Item } from '../types/item'
 import { Link } from 'react-router-dom'
 
@@ -19,6 +20,7 @@ export const MyReportsPage = () => {
       const me = await getAuthMe()
       if (!me.linked || !me.identity?.telegram_user_id) {
         setLinkedUserId(null)
+        setLinkedUsername(null)
         setItems([])
         setClaims([])
         return
@@ -31,9 +33,19 @@ export const MyReportsPage = () => {
       ])
       setItems(myItems.sort((a, b) => b.id - a.id))
       setClaims(incomingClaims as Claim[])
+      setLinkCode(null)
     } catch (err) {
       console.error(err)
-      setError('Failed to load server-owned reports. Connect Telegram and try again.')
+      const axiosErr = err as AxiosError<{ detail?: string }>
+      if (axiosErr.response?.status === 401) {
+        setLinkedUserId(null)
+        setLinkedUsername(null)
+        setItems([])
+        setClaims([])
+        setError(null)
+        return
+      }
+      setError('Failed to load server-owned reports. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -65,6 +77,18 @@ export const MyReportsPage = () => {
     }
   }
 
+  const runUnlink = async () => {
+    const shouldUnlink = window.confirm('Unlink Telegram from this browser session? You can relink anytime with a new code.')
+    if (!shouldUnlink) return
+    try {
+      await unlinkTelegram()
+      await load()
+    } catch (err) {
+      console.error(err)
+      setError('Could not unlink Telegram right now. Please try again.')
+    }
+  }
+
   return (
     <section>
       <h1>My Reports</h1>
@@ -87,9 +111,12 @@ export const MyReportsPage = () => {
       ) : null}
 
       {linkedUserId ? (
-        <p className="subtle">
-          Connected Telegram: <strong>{linkedUsername ? `@${linkedUsername}` : linkedUserId}</strong>
-        </p>
+        <div className="actions-row">
+          <p className="subtle">
+            Connected Telegram: <strong>{linkedUsername ? `@${linkedUsername}` : linkedUserId}</strong>
+          </p>
+          <button type="button" className="danger" onClick={runUnlink}>Unlink Telegram</button>
+        </div>
       ) : null}
 
       {!loading && linkedUserId && items.length === 0 ? <p>No reports yet. Create one on Report Item page.</p> : null}
