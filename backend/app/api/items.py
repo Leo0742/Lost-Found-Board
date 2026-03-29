@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_authenticated_telegram_user_id
+from app.core.auth import AdminRole, get_authenticated_telegram_user_id, require_admin, require_admin_or_moderator
 from app.db.session import get_db
 from app.models.item import ItemLifecycle, ItemStatus, ModerationStatus
-from app.core.config import get_settings
 from app.schemas.item import (
     ClaimAction,
     ClaimCreate,
@@ -24,13 +23,6 @@ from app.services.item_service import ItemService
 from app.models.claim import ClaimStatus
 
 router = APIRouter(prefix="/api/items", tags=["items"])
-
-
-def require_admin(x_admin_secret: str | None = Header(default=None)) -> str:
-    settings = get_settings()
-    if not x_admin_secret or x_admin_secret != settings.admin_secret:
-        raise HTTPException(status_code=403, detail="Admin access denied")
-    return "admin"
 
 
 @router.post("", response_model=ItemRead, status_code=status.HTTP_201_CREATED)
@@ -81,7 +73,7 @@ def list_items_admin(
     lifecycle: ItemLifecycle | None = Query(default=None),
     moderation_status: ModerationStatus | None = Query(default=None),
     q: str | None = Query(default=None),
-    _: str = Depends(require_admin),
+    _: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
 ) -> list[ItemRead]:
     service = ItemService(db)
@@ -92,6 +84,71 @@ def list_items_admin(
 def search_items(q: str = Query(min_length=1), db: Session = Depends(get_db)) -> list[ItemRead]:
     service = ItemService(db)
     return service.list_items(q=q)
+
+
+@router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])
+def list_my_items(telegram_user_id: int, db: Session = Depends(get_db)) -> list[ItemRead]:
+    service = ItemService(db)
+    return service.list_my_items(telegram_user_id)
+
+
+@router.get("/me", response_model=list[ItemRead])
+def list_my_items_from_session(
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> list[ItemRead]:
+    if not auth_telegram_user_id:
+        raise HTTPException(status_code=401, detail="Connect Telegram first")
+    service = ItemService(db)
+    return service.list_my_items(auth_telegram_user_id)
+
+
+@router.post("/claim-requests", response_model=ClaimRead)
+def create_claim(
+    payload: ClaimCreate,
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> ClaimRead:
+    service = ItemService(db)
+    source = service.get_item(payload.source_item_id)
+    target = service.get_item(payload.target_item_id)
+    if not source or not target:
+        raise HTTPException(status_code=404, detail="Source or target item not found")
+    if source.lifecycle != ItemLifecycle.ACTIVE or target.lifecycle != ItemLifecycle.ACTIVE:
+        raise HTTPException(status_code=400, detail="Only active items can be claimed")
+    if source.moderation_status != ModerationStatus.APPROVED or target.moderation_status != ModerationStatus.APPROVED:
+        raise HTTPException(status_code=400, detail="Claim is allowed only for approved reports")
+    if source.status == target.status:
+        raise HTTPException(status_code=400, detail="Claim requires opposite lost/found reports")
+    source_owner_id = source.owner_telegram_user_id or source.telegram_user_id
+    actor_id = auth_telegram_user_id or payload.requester_telegram_user_id
+    if actor_id and source_owner_id != actor_id:
+        raise HTTPException(status_code=403, detail="Only source owner can create this claim")
+    claim = service.create_claim(
+        source,
+        target,
+        requester_telegram_user_id=actor_id or source_owner_id,
+        requester_name=payload.requester_name,
+        claim_message=payload.claim_message,
+    )
+    return service.claim_read(claim, viewer_telegram_user_id=actor_id or source_owner_id)
+
+
+@router.get("/claim-requests", response_model=list[ClaimRead])
+def list_claims(
+    telegram_user_id: int | None = Query(default=None),
+    direction: str = Query(default="all"),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> list[ClaimRead]:
+    if direction not in {"all", "incoming", "outgoing"}:
+        raise HTTPException(status_code=400, detail="direction must be one of: all, incoming, outgoing")
+    actor_id = auth_telegram_user_id or telegram_user_id
+    if not actor_id:
+        raise HTTPException(status_code=401, detail="Telegram identity is required")
+    service = ItemService(db)
+    claims = service.list_claims(telegram_user_id=actor_id, direction=direction)
+    return [service.claim_read(claim, viewer_telegram_user_id=actor_id) for claim in claims]
 
 
 @router.get("/{item_id}", response_model=ItemRead)
@@ -113,29 +170,12 @@ def update_item(item_id: int, payload: ItemUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_item(item_id: int, _: str = Depends(require_admin), db: Session = Depends(get_db)) -> None:
+def delete_item(item_id: int, _: AdminRole = Depends(require_admin), db: Session = Depends(get_db)) -> None:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     service.delete_item(item)
-
-
-@router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])
-def list_my_items(telegram_user_id: int, db: Session = Depends(get_db)) -> list[ItemRead]:
-    service = ItemService(db)
-    return service.list_my_items(telegram_user_id)
-
-
-@router.get("/me", response_model=list[ItemRead])
-def list_my_items_from_session(
-    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
-    db: Session = Depends(get_db),
-) -> list[ItemRead]:
-    if not auth_telegram_user_id:
-        raise HTTPException(status_code=401, detail="Connect Telegram first")
-    service = ItemService(db)
-    return service.list_my_items(auth_telegram_user_id)
 
 
 def _actor_telegram_id(payload: ItemOwnerAction, auth_telegram_user_id: int | None) -> int:
@@ -206,21 +246,21 @@ def flag_item(item_id: int, payload: ItemFlagRequest, db: Session = Depends(get_
 def moderate_item(
     item_id: int,
     payload: ItemModerationAction,
-    admin_name: str = Depends(require_admin),
+    role: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return service.moderate_item(item, payload.action, moderator=admin_name, reason=payload.reason)
+    return service.moderate_item(item, payload.action, moderator=role.value, reason=payload.reason)
 
 
 @router.post("/admin/items/{item_id}/verify", response_model=ItemRead)
 def verify_item(
     item_id: int,
     payload: ItemVerificationAction,
-    _: str = Depends(require_admin),
+    _: AdminRole = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)
@@ -234,7 +274,7 @@ def verify_item(
 def admin_lifecycle(
     item_id: int,
     payload: ItemLifecycleAdminAction,
-    _: str = Depends(require_admin),
+    _: AdminRole = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)
@@ -251,54 +291,6 @@ def get_matches(item_id: int, db: Session = Depends(get_db)) -> list[MatchResult
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return service.matches_for_item(item)
-
-
-@router.post("/claim-requests", response_model=ClaimRead)
-def create_claim(
-    payload: ClaimCreate,
-    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
-    db: Session = Depends(get_db),
-) -> ClaimRead:
-    service = ItemService(db)
-    source = service.get_item(payload.source_item_id)
-    target = service.get_item(payload.target_item_id)
-    if not source or not target:
-        raise HTTPException(status_code=404, detail="Source or target item not found")
-    if source.lifecycle != ItemLifecycle.ACTIVE or target.lifecycle != ItemLifecycle.ACTIVE:
-        raise HTTPException(status_code=400, detail="Only active items can be claimed")
-    if source.moderation_status != ModerationStatus.APPROVED or target.moderation_status != ModerationStatus.APPROVED:
-        raise HTTPException(status_code=400, detail="Claim is allowed only for approved reports")
-    if source.status == target.status:
-        raise HTTPException(status_code=400, detail="Claim requires opposite lost/found reports")
-    source_owner_id = source.owner_telegram_user_id or source.telegram_user_id
-    actor_id = auth_telegram_user_id or payload.requester_telegram_user_id
-    if actor_id and source_owner_id != actor_id:
-        raise HTTPException(status_code=403, detail="Only source owner can create this claim")
-    claim = service.create_claim(
-        source,
-        target,
-        requester_telegram_user_id=actor_id or source_owner_id,
-        requester_name=payload.requester_name,
-        claim_message=payload.claim_message,
-    )
-    return service.claim_read(claim, viewer_telegram_user_id=actor_id or source_owner_id)
-
-
-@router.get("/claim-requests", response_model=list[ClaimRead])
-def list_claims(
-    telegram_user_id: int | None = Query(default=None),
-    direction: str = Query(default="all"),
-    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
-    db: Session = Depends(get_db),
-) -> list[ClaimRead]:
-    if direction not in {"all", "incoming", "outgoing"}:
-        raise HTTPException(status_code=400, detail="direction must be one of: all, incoming, outgoing")
-    actor_id = auth_telegram_user_id or telegram_user_id
-    if not actor_id:
-        raise HTTPException(status_code=401, detail="Telegram identity is required")
-    service = ItemService(db)
-    claims = service.list_claims(telegram_user_id=actor_id, direction=direction)
-    return [service.claim_read(claim, viewer_telegram_user_id=actor_id) for claim in claims]
 
 
 @router.post("/claim-requests/{claim_id}/approve", response_model=ClaimRead)

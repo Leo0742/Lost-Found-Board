@@ -23,6 +23,9 @@ services:
       EMBEDDING_WARMUP_ON_STARTUP: ${EMBEDDING_WARMUP_ON_STARTUP:-true}
       HF_HOME: ${HF_HOME:-/models/huggingface}
       ADMIN_SECRET: ${ADMIN_SECRET:-change-me-admin-secret}
+      ADMIN_TELEGRAM_USER_IDS: ${ADMIN_TELEGRAM_USER_IDS:-}
+      ADMIN_TELEGRAM_USERNAMES: ${ADMIN_TELEGRAM_USERNAMES:-}
+      ALLOW_ADMIN_SECRET_FALLBACK: ${ALLOW_ADMIN_SECRET_FALLBACK:-false}
     volumes:
       - hf_cache:/models/huggingface
       - media_data:/app/media

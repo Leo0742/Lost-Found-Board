@@ -68,6 +68,7 @@ BOT_COMMANDS = [
     BotCommand(command="claims", description="view your claim requests"),
     BotCommand(command="link", description="link website session code"),
     BotCommand(command="flag", description="flag suspicious report"),
+    BotCommand(command="whoami", description="show your telegram/account details"),
     BotCommand(command="clear", description="cancel current action and clear chat state"),
 ]
 
@@ -216,6 +217,7 @@ async def _show_help(message: Message) -> None:
         "• /claims — track claim workflow\n"
         "• /link <code> — connect website session\n"
         "• /flag <item_id> <reason> — report abuse\n"
+        "• /whoami — show your account details\n"
         "• /clear — cancel current action",
         reply_markup=MAIN_KEYBOARD,
     )
@@ -324,6 +326,34 @@ async def cmd_help(message: Message, state: FSMContext) -> None:
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message, state: FSMContext) -> None:
     await _cancel_wizard(message, state)
+
+
+@dp.message(Command("whoami"))
+async def cmd_whoami(message: Message) -> None:
+    user = message.from_user
+    if not user:
+        await message.answer("Could not read Telegram account details.")
+        return
+
+    username = f"@{user.username}" if user.username else "not set"
+    first_name = user.first_name or "not set"
+
+    lines = [
+        f"Telegram user id: {user.id}",
+        f"Username: {username}",
+        f"First name: {first_name}",
+    ]
+
+    try:
+        access = await api.telegram_admin_access(user.id, user.username)
+        is_admin = bool(access.get("admin_access"))
+        role = access.get("role") or "none"
+        lines.append(f"Admin access: {'yes' if is_admin else 'no'}")
+        lines.append(f"Role: {role}")
+    except httpx.HTTPError:
+        pass
+
+    await message.answer("\n".join(lines))
 
 
 @dp.message(Command("list"))

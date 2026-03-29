@@ -7,6 +7,13 @@ export type TelegramIdentity = {
   display_name?: string | null
 }
 
+export type WhoAmI = {
+  linked: boolean
+  identity?: TelegramIdentity | null
+  admin_access: boolean
+  role?: 'admin' | 'moderator' | null
+}
+
 export const fetchItems = async (params: { q?: string; status?: ItemStatus | 'all'; category?: string; lifecycle?: ItemLifecycle | 'all' }) => {
   const query: Record<string, string> = {}
   if (params.q) query.q = params.q
@@ -39,13 +46,17 @@ export const createWebSession = async () => {
 }
 
 export const getAuthMe = async () => {
-  const response = await apiClient.get<{ linked: boolean; identity?: TelegramIdentity | null }>('/auth/me')
+  const response = await apiClient.get<WhoAmI>('/auth/me')
   return response.data
 }
 
 export const generateLinkCode = async () => {
   const response = await apiClient.post<{ code: string; expires_at: string }>('/auth/link-code')
   return response.data
+}
+
+export const unlinkTelegram = async () => {
+  await apiClient.post('/auth/unlink')
 }
 
 export const uploadItemImage = async (file: File) => {
@@ -86,38 +97,25 @@ export const fetchMyItems = async () => {
   return response.data
 }
 
-export const fetchAdminItems = async (adminSecret: string, params: { moderation_status?: string; lifecycle?: string; q?: string }) => {
+export const fetchAdminItems = async (params: { moderation_status?: string; lifecycle?: string; q?: string }) => {
   const response = await apiClient.get<Item[]>('/items/admin/items', {
-    params,
-    headers: { 'X-Admin-Secret': adminSecret }
+    params
   })
   return response.data
 }
 
-export const moderateItem = async (adminSecret: string, itemId: number, action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
-  const response = await apiClient.post<Item>(
-    `/items/admin/items/${itemId}/moderate`,
-    { action, reason },
-    { headers: { 'X-Admin-Secret': adminSecret } }
-  )
+export const moderateItem = async (itemId: number, action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
+  const response = await apiClient.post<Item>(`/items/admin/items/${itemId}/moderate`, { action, reason })
   return response.data
 }
 
-export const verifyItemAdmin = async (adminSecret: string, itemId: number, is_verified: boolean) => {
-  const response = await apiClient.post<Item>(
-    `/items/admin/items/${itemId}/verify`,
-    { is_verified },
-    { headers: { 'X-Admin-Secret': adminSecret } }
-  )
+export const verifyItemAdmin = async (itemId: number, is_verified: boolean) => {
+  const response = await apiClient.post<Item>(`/items/admin/items/${itemId}/verify`, { is_verified })
   return response.data
 }
 
-export const lifecycleItemAdmin = async (adminSecret: string, itemId: number, action: 'resolve' | 'reopen' | 'delete') => {
-  const response = await apiClient.post<Item>(
-    `/items/admin/items/${itemId}/lifecycle`,
-    { action },
-    { headers: { 'X-Admin-Secret': adminSecret } }
-  )
+export const lifecycleItemAdmin = async (itemId: number, action: 'resolve' | 'reopen' | 'delete') => {
+  const response = await apiClient.post<Item>(`/items/admin/items/${itemId}/lifecycle`, { action })
   return response.data
 }
 

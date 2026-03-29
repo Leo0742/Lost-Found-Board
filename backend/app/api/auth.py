@@ -1,14 +1,21 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import create_web_session, generate_link_code, get_session_from_cookie
+from app.core.auth import create_web_session, generate_link_code, get_admin_role_for_identity, get_admin_role_for_session, get_session_from_cookie
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.auth_session import WebAuthSession
-from app.schemas.auth import LinkCodeResponse, LinkConfirmRequest, SessionResponse, TelegramIdentity, WhoAmIResponse
+from app.schemas.auth import (
+    LinkCodeResponse,
+    LinkConfirmRequest,
+    SessionResponse,
+    TelegramAdminAccessResponse,
+    TelegramIdentity,
+    WhoAmIResponse,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -34,7 +41,8 @@ def create_session(response: Response, db: Session = Depends(get_db)) -> Session
 @router.get("/me", response_model=WhoAmIResponse)
 def whoami(session: WebAuthSession | None = Depends(get_session_from_cookie)) -> WhoAmIResponse:
     if not session or not session.telegram_user_id:
-        return WhoAmIResponse(linked=False, identity=None)
+        return WhoAmIResponse(linked=False, identity=None, admin_access=False, role=None)
+    role = get_admin_role_for_session(session)
     return WhoAmIResponse(
         linked=True,
         identity=TelegramIdentity(
@@ -42,6 +50,8 @@ def whoami(session: WebAuthSession | None = Depends(get_session_from_cookie)) ->
             telegram_username=session.telegram_username,
             display_name=session.telegram_display_name,
         ),
+        admin_access=bool(role),
+        role=role.value if role else None,
     )
 
 
@@ -93,6 +103,7 @@ def confirm_link(payload: LinkConfirmRequest, db: Session = Depends(get_db)) -> 
     db.add(session)
     db.commit()
     db.refresh(session)
+    role = get_admin_role_for_session(session)
     return WhoAmIResponse(
         linked=True,
         identity=TelegramIdentity(
@@ -100,6 +111,8 @@ def confirm_link(payload: LinkConfirmRequest, db: Session = Depends(get_db)) -> 
             telegram_username=session.telegram_username,
             display_name=session.telegram_display_name,
         ),
+        admin_access=bool(role),
+        role=role.value if role else None,
     )
 
 
@@ -113,3 +126,26 @@ def logout(response: Response, session: WebAuthSession | None = Depends(get_sess
         db.add(session)
         db.commit()
     response.delete_cookie("lfb_session")
+
+
+@router.post("/unlink", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_telegram(session: WebAuthSession | None = Depends(get_session_from_cookie), db: Session = Depends(get_db)) -> None:
+    if not session:
+        return
+    session.telegram_user_id = None
+    session.telegram_username = None
+    session.telegram_display_name = None
+    session.linked_at = None
+    session.link_code = None
+    session.link_code_expires_at = None
+    db.add(session)
+    db.commit()
+
+
+@router.get("/telegram-admin-access", response_model=TelegramAdminAccessResponse)
+def telegram_admin_access(
+    telegram_user_id: int = Query(...),
+    telegram_username: str | None = Query(default=None),
+) -> TelegramAdminAccessResponse:
+    role = get_admin_role_for_identity(telegram_user_id=telegram_user_id, telegram_username=telegram_username)
+    return TelegramAdminAccessResponse(admin_access=bool(role), role=role.value if role else None)

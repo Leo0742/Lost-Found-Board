@@ -119,3 +119,12 @@ class BackendClient:
             )
             response.raise_for_status()
             return response.json()
+
+    async def telegram_admin_access(self, telegram_user_id: int, telegram_username: str | None) -> dict:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.get(
+                f"{self.base_url}/auth/telegram-admin-access",
+                params={"telegram_user_id": telegram_user_id, "telegram_username": telegram_username},
+            )
+            response.raise_for_status()
+            return response.json()

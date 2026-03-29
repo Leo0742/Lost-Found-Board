@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { claimAction, fetchMyItems, generateLinkCode, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem } from '../api/items'
+import { AxiosError } from 'axios'
+import { claimAction, fetchMyItems, generateLinkCode, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem, unlinkTelegram } from '../api/items'
 import { Claim, Item } from '../types/item'
 import { Link } from 'react-router-dom'
 
@@ -8,6 +9,7 @@ export const MyReportsPage = () => {
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [claimsError, setClaimsError] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [linkedUsername, setLinkedUsername] = useState<string | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
@@ -15,25 +17,41 @@ export const MyReportsPage = () => {
   const load = async () => {
     setLoading(true)
     setError(null)
+    setClaimsError(null)
     try {
       const me = await getAuthMe()
       if (!me.linked || !me.identity?.telegram_user_id) {
         setLinkedUserId(null)
+        setLinkedUsername(null)
         setItems([])
         setClaims([])
         return
       }
       setLinkedUserId(me.identity.telegram_user_id)
       setLinkedUsername(me.identity.telegram_username || null)
-      const [myItems, incomingClaims] = await Promise.all([
-        fetchMyItems(),
-        listClaims(undefined, 'incoming')
-      ])
+      const myItems = await fetchMyItems()
       setItems(myItems.sort((a, b) => b.id - a.id))
-      setClaims(incomingClaims as Claim[])
+      setLinkCode(null)
+      try {
+        const incomingClaims = await listClaims(undefined, 'incoming')
+        setClaims(incomingClaims as Claim[])
+      } catch (claimsErr) {
+        console.error(claimsErr)
+        setClaims([])
+        setClaimsError('Claims are temporarily unavailable. Your reports are still loaded.')
+      }
     } catch (err) {
       console.error(err)
-      setError('Failed to load server-owned reports. Connect Telegram and try again.')
+      const axiosErr = err as AxiosError<{ detail?: string }>
+      if (axiosErr.response?.status === 401) {
+        setLinkedUserId(null)
+        setLinkedUsername(null)
+        setItems([])
+        setClaims([])
+        setError(null)
+        return
+      }
+      setError('Failed to load server-owned reports. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -65,12 +83,25 @@ export const MyReportsPage = () => {
     }
   }
 
+  const runUnlink = async () => {
+    const shouldUnlink = window.confirm('Unlink Telegram from this browser session? You can relink anytime with a new code.')
+    if (!shouldUnlink) return
+    try {
+      await unlinkTelegram()
+      await load()
+    } catch (err) {
+      console.error(err)
+      setError('Could not unlink Telegram right now. Please try again.')
+    }
+  }
+
   return (
     <section>
       <h1>My Reports</h1>
       <p className="subtle">Server-driven ownership (Telegram-linked), synced across devices and bot.</p>
       {loading ? <p>Loading...</p> : null}
       {error ? <p className="error">{error}</p> : null}
+      {claimsError ? <p className="subtle">{claimsError}</p> : null}
 
       {!loading && !linkedUserId ? (
         <article className="card">
@@ -87,9 +118,12 @@ export const MyReportsPage = () => {
       ) : null}
 
       {linkedUserId ? (
-        <p className="subtle">
-          Connected Telegram: <strong>{linkedUsername ? `@${linkedUsername}` : linkedUserId}</strong>
-        </p>
+        <div className="actions-row">
+          <p className="subtle">
+            Connected Telegram: <strong>{linkedUsername ? `@${linkedUsername}` : linkedUserId}</strong>
+          </p>
+          <button type="button" className="danger" onClick={runUnlink}>Unlink Telegram</button>
+        </div>
       ) : null}
 
       {!loading && linkedUserId && items.length === 0 ? <p>No reports yet. Create one on Report Item page.</p> : null}
