@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.item import ItemStatus
-from app.schemas.item import ItemCreate, ItemRead, ItemUpdate, MatchResult
+from app.models.item import ItemLifecycle, ItemStatus
+from app.schemas.item import ItemCreate, ItemOwnerAction, ItemRead, ItemUpdate, MatchResult
 from app.services.item_service import ItemService
 
 router = APIRouter(prefix="/api/items", tags=["items"])
@@ -18,12 +18,13 @@ def create_item(payload: ItemCreate, db: Session = Depends(get_db)) -> ItemRead:
 @router.get("", response_model=list[ItemRead])
 def list_items(
     status: ItemStatus | None = Query(default=None),
+    lifecycle: ItemLifecycle | None = Query(default=ItemLifecycle.ACTIVE),
     category: str | None = Query(default=None),
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[ItemRead]:
     service = ItemService(db)
-    return service.list_items(status=status, category=category, q=q)
+    return service.list_items(status=status, category=category, q=q, lifecycle=lifecycle)
 
 
 @router.get("/search", response_model=list[ItemRead])
@@ -57,6 +58,45 @@ def delete_item(item_id: int, db: Session = Depends(get_db)) -> None:
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     service.delete_item(item)
+
+
+@router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])
+def list_my_items(telegram_user_id: int, db: Session = Depends(get_db)) -> list[ItemRead]:
+    service = ItemService(db)
+    return service.list_my_items(telegram_user_id)
+
+
+@router.post("/{item_id}/resolve", response_model=ItemRead)
+def resolve_item(item_id: int, payload: ItemOwnerAction, db: Session = Depends(get_db)) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not service.is_owner(item, payload.telegram_user_id):
+        raise HTTPException(status_code=403, detail="Only the owner can resolve this item")
+    return service.mark_resolved(item)
+
+
+@router.post("/{item_id}/reopen", response_model=ItemRead)
+def reopen_item(item_id: int, payload: ItemOwnerAction, db: Session = Depends(get_db)) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not service.is_owner(item, payload.telegram_user_id):
+        raise HTTPException(status_code=403, detail="Only the owner can reopen this item")
+    return service.reopen(item)
+
+
+@router.post("/{item_id}/delete", response_model=ItemRead)
+def soft_delete_item(item_id: int, payload: ItemOwnerAction, db: Session = Depends(get_db)) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not service.is_owner(item, payload.telegram_user_id):
+        raise HTTPException(status_code=403, detail="Only the owner can delete this item")
+    return service.delete_item(item)
 
 
 @router.get("/matches/{item_id}", response_model=list[MatchResult])

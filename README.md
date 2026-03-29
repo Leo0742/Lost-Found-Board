@@ -42,6 +42,8 @@ The codebase is intentionally modular for hackathon speed:
 - Filters: status (`lost`/`found`/all), keyword query, optional category.
 - Create item page.
 - Item detail page.
+- My Reports page (local browser ownership via localStorage).
+- Lifecycle management from UI (`active`, `resolved`, `deleted`) for owned reports.
 - Responsive layout for phone/laptop.
 
 ### Backend API
@@ -50,6 +52,10 @@ The codebase is intentionally modular for hackathon speed:
 - `GET /api/items/{id}`
 - `PATCH /api/items/{id}`
 - `DELETE /api/items/{id}`
+- `GET /api/items/mine/{telegram_user_id}`
+- `POST /api/items/{id}/resolve`
+- `POST /api/items/{id}/reopen`
+- `POST /api/items/{id}/delete` (soft delete)
 - `GET /api/items/search?q=...`
 - `GET /api/items/matches/{id}`
 - OpenAPI docs at `/docs`.
@@ -61,7 +67,9 @@ The codebase is intentionally modular for hackathon speed:
 - `/search <query>`
 - `/lost`
 - `/found`
-- After `/new`, bot displays possible matches from backend.
+- `/myitems` for ownership-based report management.
+- `/clear` cancels ongoing flows and resets state.
+- After `/new`, bot displays matches and sends strong-match notifications to relevant Telegram owners.
 
 ### Matching logic (hybrid local, no external API)
 - Opposite status hard filter (`lost` vs `found`).
@@ -111,6 +119,39 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Model runs locally on CPU and model files are cached on first use.
 - No external inference API calls are used (local inference only).
 - You can override model via env: `EMBEDDING_MODEL_NAME=<model-name>`.
+
+## Item Lifecycle & Management
+
+- Reports now have a lifecycle field:
+  - `active` (default)
+  - `resolved`
+  - `deleted` (soft delete)
+- Matching/search defaults to active reports.
+- Resolved/deleted reports are excluded from normal match candidate pools.
+- Ownership-sensitive actions (`resolve/reopen/delete`) require matching `telegram_user_id`.
+
+## Bot: My Items & Management
+
+- Use `/myitems` (or **My Items** keyboard button) to list and manage your reports.
+- Each item card includes actions:
+  - Show Matches
+  - Mark Resolved / Reopen
+  - Delete (soft)
+- Bot verifies ownership via `telegram_user_id`.
+
+## Website: My Reports (lightweight ownership)
+
+- No full login/auth was added.
+- Reports created from web are tracked in localStorage by item id.
+- Optional Telegram user id field on web creation helps ownership-based resolve/delete calls.
+- `My Reports` page allows view/resolve/reopen/delete for locally tracked reports.
+
+## Automatic Match Notifications (Bot)
+
+- After creating a new item in bot, if strong matches are found (score threshold), bot:
+  - notifies the creator
+  - notifies matched item owners when `telegram_user_id` is available
+- Notification failures are swallowed and do not block item creation flow.
 
 ## Local Development (without Docker)
 

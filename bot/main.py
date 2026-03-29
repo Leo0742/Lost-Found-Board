@@ -1,16 +1,30 @@
 import sys
+
 import httpx
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import (
+    BotCommand,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+)
 
 from api_client import BackendClient
 from config import settings
 
+
 dp = Dispatcher()
-api = BackendClient(settings.api_base_url)
+api = BackendClient(
+    settings.api_base_url,
+    timeout_seconds=settings.api_timeout_seconds,
+    match_timeout_seconds=settings.match_timeout_seconds,
+)
 
 FIELD_LIMITS = {
     "title": (3, 120),
@@ -20,6 +34,34 @@ FIELD_LIMITS = {
     "contact_name": (2, 80),
 }
 
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="New Item"), KeyboardButton(text="My Items"), KeyboardButton(text="Recent Items")],
+        [KeyboardButton(text="Search"), KeyboardButton(text="Lost Items"), KeyboardButton(text="Found Items")],
+        [KeyboardButton(text="Help"), KeyboardButton(text="Clear")],
+    ],
+    resize_keyboard=True,
+    input_field_placeholder="Choose an action",
+)
+
+FORM_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="Back"), KeyboardButton(text="Cancel")]],
+    resize_keyboard=True,
+    input_field_placeholder="Use Back/Cancel or type your answer",
+)
+
+BOT_COMMANDS = [
+    BotCommand(command="start", description="restart the bot"),
+    BotCommand(command="help", description="show instructions"),
+    BotCommand(command="new", description="create a lost/found item"),
+    BotCommand(command="list", description="show recent items"),
+    BotCommand(command="search", description="search items"),
+    BotCommand(command="lost", description="show lost items"),
+    BotCommand(command="found", description="show found items"),
+    BotCommand(command="myitems", description="manage your reports"),
+    BotCommand(command="clear", description="cancel current action and clear chat state"),
+]
+
 
 class NewItemForm(StatesGroup):
     status = State()
@@ -28,14 +70,212 @@ class NewItemForm(StatesGroup):
     location = State()
     description = State()
     contact = State()
+    review = State()
+
+
+STEP_ORDER = ["status", "title", "category", "location", "description", "contact"]
+
+STEP_META = {
+    "status": {
+        "state": NewItemForm.status,
+        "title": "Status",
+        "prompt": "Please enter item status: lost or found.",
+    },
+    "title": {
+        "state": NewItemForm.title,
+        "title": "Title",
+        "prompt": "Please enter the item title.",
+    },
+    "category": {
+        "state": NewItemForm.category,
+        "title": "Category",
+        "prompt": "Please enter the category (e.g. Electronics, Bags, Accessories).",
+    },
+    "location": {
+        "state": NewItemForm.location,
+        "title": "Location",
+        "prompt": "Where was it lost/found?",
+    },
+    "description": {
+        "state": NewItemForm.description,
+        "title": "Description",
+        "prompt": "Short description?",
+    },
+    "contact": {
+        "state": NewItemForm.contact,
+        "title": "Contact",
+        "prompt": "Contact name? (or type 'me' to use your Telegram username)",
+    },
+}
+
+
+def _review_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Submit", callback_data="review:submit")],
+            [
+                InlineKeyboardButton(text="✏️ Edit Status", callback_data="review:edit:status"),
+                InlineKeyboardButton(text="✏️ Edit Title", callback_data="review:edit:title"),
+            ],
+            [
+                InlineKeyboardButton(text="✏️ Edit Category", callback_data="review:edit:category"),
+                InlineKeyboardButton(text="✏️ Edit Location", callback_data="review:edit:location"),
+            ],
+            [
+                InlineKeyboardButton(text="✏️ Edit Description", callback_data="review:edit:description"),
+                InlineKeyboardButton(text="✏️ Edit Contact", callback_data="review:edit:contact"),
+            ],
+            [InlineKeyboardButton(text="❌ Cancel", callback_data="review:cancel")],
+        ]
+    )
+
+
+def _item_actions_keyboard(item_id: int, lifecycle: str) -> InlineKeyboardMarkup:
+    controls = [
+        [
+            InlineKeyboardButton(text="🔎 Show Matches", callback_data=f"myitem:matches:{item_id}"),
+            InlineKeyboardButton(text="🗑 Delete", callback_data=f"myitem:delete:{item_id}"),
+        ]
+    ]
+    if lifecycle == "active":
+        controls.insert(0, [InlineKeyboardButton(text="✅ Mark Resolved", callback_data=f"myitem:resolve:{item_id}")])
+    elif lifecycle == "resolved":
+        controls.insert(0, [InlineKeyboardButton(text="♻️ Reopen", callback_data=f"myitem:reopen:{item_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=controls)
+
+
+def _render_item_summary(item: dict) -> str:
+    return (
+        f"#{item['id']} {item['title']}\n"
+        f"Type: {str(item['status']).upper()} • Lifecycle: {str(item['lifecycle']).upper()}\n"
+        f"Category: {item['category']}\n"
+        f"Location: {item['location']}\n"
+        f"Created: {item['created_at'][:10]}"
+    )
+
+
+async def _clear_state(state: FSMContext) -> None:
+    await state.clear()
+
+
+async def _cancel_wizard(message: Message, state: FSMContext) -> None:
+    await _clear_state(state)
+    await message.answer("Current action cleared. You can start again.", reply_markup=MAIN_KEYBOARD)
+
+
+async def _show_help(message: Message) -> None:
+    await message.answer(
+        "Use the menu or keyboard:\n"
+        "• /new — post an item\n"
+        "• /list — recent items\n"
+        "• /search <query> — find by keyword\n"
+        "• /lost /found — filtered lists\n"
+        "• /myitems — manage your reports\n"
+        "• /clear — cancel current action",
+        reply_markup=MAIN_KEYBOARD,
+    )
+
+
+async def _set_bot_commands(bot: Bot) -> None:
+    await bot.set_my_commands(BOT_COMMANDS)
+
+
+async def on_startup(bot: Bot) -> None:
+    await _set_bot_commands(bot)
+
+
+def _step_header(step_key: str) -> str:
+    step_number = STEP_ORDER.index(step_key) + 1
+    total = len(STEP_ORDER)
+    return f"Step {step_number}/{total} — {STEP_META[step_key]['title']}"
+
+
+async def _ask_step(message: Message, state: FSMContext, step_key: str) -> None:
+    await state.set_state(STEP_META[step_key]["state"])
+    await message.answer(
+        f"{_step_header(step_key)}\n{STEP_META[step_key]['prompt']}",
+        reply_markup=FORM_KEYBOARD,
+    )
+
+
+def _build_review_text(data: dict) -> str:
+    return (
+        "Please review your item:\n\n"
+        f"Status: {str(data.get('status', '')).title()}\n"
+        f"Title: {data.get('title', '')}\n"
+        f"Category: {data.get('category', '')}\n"
+        f"Location: {data.get('location', '')}\n"
+        f"Description: {data.get('description', '')}\n"
+        f"Contact: {data.get('contact_name', '')}\n\n"
+        "Choose an action below."
+    )
+
+
+async def _show_review(message: Message, state: FSMContext) -> None:
+    await state.set_state(NewItemForm.review)
+    data = await state.get_data()
+    await message.answer(_build_review_text(data), reply_markup=_review_keyboard())
+
+
+async def _go_back(message: Message, state: FSMContext) -> None:
+    current = await state.get_state()
+    state_to_key = {
+        NewItemForm.status.state: "status",
+        NewItemForm.title.state: "title",
+        NewItemForm.category.state: "category",
+        NewItemForm.location.state: "location",
+        NewItemForm.description.state: "description",
+        NewItemForm.contact.state: "contact",
+        NewItemForm.review.state: "review",
+    }
+    current_key = state_to_key.get(current)
+
+    if current_key == "review":
+        await _ask_step(message, state, "contact")
+        return
+
+    if not current_key or current_key == "status":
+        await message.answer("You are already at the first step.", reply_markup=FORM_KEYBOARD)
+        return
+
+    prev_key = STEP_ORDER[STEP_ORDER.index(current_key) - 1]
+    await _ask_step(message, state, prev_key)
+
+
+async def _store_and_continue(message: Message, state: FSMContext, step_key: str, value: str) -> None:
+    update_key = "contact_name" if step_key == "contact" else step_key
+    await state.update_data(**{update_key: value})
+
+    is_editing = bool((await state.get_data()).get("editing_field"))
+    if is_editing:
+        await state.update_data(editing_field=None)
+        await _show_review(message, state)
+        return
+
+    if step_key == "contact":
+        await _show_review(message, state)
+        return
+
+    next_key = STEP_ORDER[STEP_ORDER.index(step_key) + 1]
+    await _ask_step(message, state, next_key)
 
 
 @dp.message(Command("start"))
-async def cmd_start(message: Message) -> None:
-    await message.answer(
-        "👋 Welcome to Lost & Found Board assistant.\n"
-        "Use /new to post an item, /list to see recent posts, /search <keyword> to find items."
-    )
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    await _clear_state(state)
+    await message.answer("👋 Welcome to Lost & Found Board assistant.", reply_markup=MAIN_KEYBOARD)
+    await _show_help(message)
+
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message, state: FSMContext) -> None:
+    await _clear_state(state)
+    await _show_help(message)
+
+
+@dp.message(Command("clear"))
+async def cmd_clear(message: Message, state: FSMContext) -> None:
+    await _cancel_wizard(message, state)
 
 
 @dp.message(Command("list"))
@@ -76,21 +316,88 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
     await message.answer(text)
 
 
+@dp.message(Command("myitems"))
+async def cmd_my_items(message: Message) -> None:
+    user_id = message.from_user.id
+    items = await api.list_my_items(user_id)
+    if not items:
+        await message.answer("You have no reports yet. Use /new to create one.", reply_markup=MAIN_KEYBOARD)
+        return
+
+    active = [item for item in items if item["lifecycle"] == "active"]
+    resolved = [item for item in items if item["lifecycle"] == "resolved"]
+    deleted = [item for item in items if item["lifecycle"] == "deleted"]
+    await message.answer(
+        f"My Reports\nActive: {len(active)} • Resolved: {len(resolved)} • Deleted: {len(deleted)}",
+        reply_markup=MAIN_KEYBOARD,
+    )
+    for item in items[:20]:
+        await message.answer(_render_item_summary(item), reply_markup=_item_actions_keyboard(item["id"], item["lifecycle"]))
+
+
 @dp.message(Command("new"))
 async def cmd_new(message: Message, state: FSMContext) -> None:
-    await state.set_state(NewItemForm.status)
-    await message.answer("Is the item *lost* or *found*?", parse_mode="Markdown")
+    await _clear_state(state)
+    await _ask_step(message, state, "status")
+
+
+@dp.message(F.text.casefold() == "new item")
+async def keyboard_new_item(message: Message, state: FSMContext) -> None:
+    await cmd_new(message, state)
+
+
+@dp.message(F.text.casefold() == "recent items")
+async def keyboard_recent_items(message: Message) -> None:
+    await cmd_list(message)
+
+
+@dp.message(F.text.casefold() == "my items")
+async def keyboard_my_items(message: Message) -> None:
+    await cmd_my_items(message)
+
+
+@dp.message(F.text.casefold() == "search")
+async def keyboard_search_hint(message: Message) -> None:
+    await message.answer("Send /search <keyword> to search items.", reply_markup=MAIN_KEYBOARD)
+
+
+@dp.message(F.text.casefold() == "lost items")
+async def keyboard_lost_items(message: Message) -> None:
+    await cmd_lost(message)
+
+
+@dp.message(F.text.casefold() == "found items")
+async def keyboard_found_items(message: Message) -> None:
+    await cmd_found(message)
+
+
+@dp.message(F.text.casefold() == "help")
+async def keyboard_help(message: Message, state: FSMContext) -> None:
+    await cmd_help(message, state)
+
+
+@dp.message(F.text.casefold() == "clear")
+async def keyboard_clear(message: Message, state: FSMContext) -> None:
+    await cmd_clear(message, state)
+
+
+@dp.message(NewItemForm, F.text.casefold() == "cancel")
+async def wizard_cancel(message: Message, state: FSMContext) -> None:
+    await _cancel_wizard(message, state)
+
+
+@dp.message(NewItemForm, F.text.casefold() == "back")
+async def wizard_back(message: Message, state: FSMContext) -> None:
+    await _go_back(message, state)
 
 
 @dp.message(NewItemForm.status)
 async def form_status(message: Message, state: FSMContext) -> None:
     value = message.text.strip().lower()
     if value not in {"lost", "found"}:
-        await message.answer("Please type exactly: lost or found.")
+        await message.answer("Please type exactly: lost or found.", reply_markup=FORM_KEYBOARD)
         return
-    await state.update_data(status=value)
-    await state.set_state(NewItemForm.title)
-    await message.answer("Title of the item?")
+    await _store_and_continue(message, state, "status", value)
 
 
 @dp.message(NewItemForm.title)
@@ -98,9 +405,7 @@ async def form_title(message: Message, state: FSMContext) -> None:
     title = message.text.strip()
     if not await _check_length(message, "title", title):
         return
-    await state.update_data(title=title)
-    await state.set_state(NewItemForm.category)
-    await message.answer("Category? (e.g. Electronics, Bags, Accessories)")
+    await _store_and_continue(message, state, "title", title)
 
 
 @dp.message(NewItemForm.category)
@@ -108,9 +413,7 @@ async def form_category(message: Message, state: FSMContext) -> None:
     category = message.text.strip()
     if not await _check_length(message, "category", category):
         return
-    await state.update_data(category=category)
-    await state.set_state(NewItemForm.location)
-    await message.answer("Where was it lost/found?")
+    await _store_and_continue(message, state, "category", category)
 
 
 @dp.message(NewItemForm.location)
@@ -118,9 +421,7 @@ async def form_location(message: Message, state: FSMContext) -> None:
     location = message.text.strip()
     if not await _check_length(message, "location", location):
         return
-    await state.update_data(location=location)
-    await state.set_state(NewItemForm.description)
-    await message.answer("Short description?")
+    await _store_and_continue(message, state, "location", location)
 
 
 @dp.message(NewItemForm.description)
@@ -128,58 +429,193 @@ async def form_description(message: Message, state: FSMContext) -> None:
     description = message.text.strip()
     if not await _check_length(message, "description", description):
         return
-    await state.update_data(description=description)
-    await state.set_state(NewItemForm.contact)
-    await message.answer("Contact name? (or type 'me' to use your Telegram username)")
+    await _store_and_continue(message, state, "description", description)
 
 
 @dp.message(NewItemForm.contact)
 async def form_contact(message: Message, state: FSMContext) -> None:
-    data = await state.get_data()
     username = message.from_user.username
     contact_raw = message.text.strip()
     contact_name = f"@{username}" if contact_raw.lower() == "me" and username else contact_raw
     if not await _check_length(message, "contact_name", contact_name):
         return
+    await _store_and_continue(message, state, "contact", contact_name)
 
-    payload = {
-        **data,
-        "contact_name": contact_name,
-        "telegram_username": f"@{username}" if username else None,
-        "telegram_user_id": message.from_user.id,
-    }
+
+@dp.callback_query(NewItemForm.review, F.data.startswith("review:"))
+async def review_action(callback: CallbackQuery, state: FSMContext) -> None:
+    action = callback.data
+
+    if action == "review:cancel":
+        await state.clear()
+        await callback.message.answer("Current action cleared. You can start again.", reply_markup=MAIN_KEYBOARD)
+        await callback.answer()
+        return
+
+    if action == "review:submit":
+        data = await state.get_data()
+        payload = {
+            "status": data["status"],
+            "title": data["title"],
+            "category": data["category"],
+            "location": data["location"],
+            "description": data["description"],
+            "contact_name": data["contact_name"],
+            "telegram_username": f"@{callback.from_user.username}" if callback.from_user.username else None,
+            "telegram_user_id": callback.from_user.id,
+        }
+
+        try:
+            item = await api.create_item(payload)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 422:
+                await callback.message.answer(
+                    "Could not create item because of validation errors:\n"
+                    f"{_format_validation_error(exc.response)}",
+                    reply_markup=MAIN_KEYBOARD,
+                )
+                await callback.answer()
+                return
+            raise
+
+        await state.clear()
+        await callback.message.answer(f"✅ Item created: #{item['id']} {item['title']}", reply_markup=MAIN_KEYBOARD)
+
+        try:
+            matches = await api.get_matches(item["id"])
+        except (httpx.TimeoutException, httpx.HTTPError):
+            await callback.message.answer(
+                "Item saved successfully. Smart matching is temporarily unavailable, "
+                "but we'll keep your item posted for rule-based discovery."
+            )
+            await callback.answer()
+            return
+
+        if matches:
+            match_lines = []
+            for m in matches:
+                reasons = ", ".join(m.get("reasons", [])[:3])
+                match_lines.append(
+                    f"• {m['title']} ({m['category']}, {m['location']})\n"
+                    f"  score={m['relevance_score']}/10, confidence={m.get('confidence', 'low')}\n"
+                    f"  why: {reasons or 'similar context'}"
+                )
+            await callback.message.answer("Possible smart matches:\n" + "\n".join(match_lines), reply_markup=MAIN_KEYBOARD)
+
+            strong_matches = [m for m in matches if float(m.get("relevance_score", 0)) >= 7.0]
+            if strong_matches:
+                await _notify_strong_matches(callback.bot, item, strong_matches)
+        else:
+            await callback.message.answer("No smart matches yet. We'll keep checking as new items arrive.", reply_markup=MAIN_KEYBOARD)
+
+        await callback.answer()
+        return
+
+    # review:edit:<field>
+    _, _, field = action.split(":", maxsplit=2)
+    if field not in STEP_META:
+        await callback.answer("Unknown field", show_alert=True)
+        return
+
+    await state.update_data(editing_field=field)
+    await state.set_state(STEP_META[field]["state"])
+    await callback.message.answer(
+        f"Editing {STEP_META[field]['title']}.\n{STEP_META[field]['prompt']}",
+        reply_markup=FORM_KEYBOARD,
+    )
+    await callback.answer()
+
+
+async def _notify_strong_matches(bot: Bot, source_item: dict, matches: list[dict]) -> None:
+    creator_id = source_item.get("telegram_user_id")
+    notified: set[int] = set()
+    if creator_id:
+        notified.add(int(creator_id))
+
+    for match in matches:
+        owner_id = match.get("telegram_user_id")
+        if not owner_id:
+            continue
+        owner_id = int(owner_id)
+        if owner_id in notified:
+            continue
+        notified.add(owner_id)
+        try:
+            await bot.send_message(
+                owner_id,
+                "🔔 Possible match found for your report.\n"
+                f"Your potential match: {match['title']}\n"
+                f"New report: {source_item['title']}\n"
+                f"Confidence: {match.get('confidence', 'low').title()}\n"
+                f"Why: {', '.join(match.get('reasons', [])[:3]) or 'similar signals'}",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        except Exception:
+            continue
+
+    if creator_id and matches:
+        try:
+            top = matches[0]
+            await bot.send_message(
+                int(creator_id),
+                "🔔 Strong possible match detected for your new report.\n"
+                f"Matched item: {top['title']}\n"
+                f"Confidence: {top.get('confidence', 'low').title()}",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        except Exception:
+            return
+
+
+@dp.callback_query(F.data.startswith("myitem:"))
+async def my_item_action(callback: CallbackQuery) -> None:
+    _, action, item_id_raw = callback.data.split(":")
+    item_id = int(item_id_raw)
+    user_id = callback.from_user.id
 
     try:
-        item = await api.create_item(payload)
+        if action == "matches":
+            matches = await api.get_matches(item_id)
+            if not matches:
+                await callback.message.answer("No matches yet for this report.", reply_markup=MAIN_KEYBOARD)
+            else:
+                lines = [
+                    f"• {m['title']} ({m['category']}, {m['location']}) — {m['confidence']} ({m['relevance_score']}/10)"
+                    for m in matches[:5]
+                ]
+                await callback.message.answer("Matches:\n" + "\n".join(lines), reply_markup=MAIN_KEYBOARD)
+        elif action == "resolve":
+            item = await api.resolve_item(item_id, user_id)
+            await callback.message.answer(
+                f"✅ Report #{item['id']} marked as resolved.",
+                reply_markup=_item_actions_keyboard(item['id'], item['lifecycle']),
+            )
+        elif action == "reopen":
+            item = await api.reopen_item(item_id, user_id)
+            await callback.message.answer(
+                f"♻️ Report #{item['id']} reopened.",
+                reply_markup=_item_actions_keyboard(item['id'], item['lifecycle']),
+            )
+        elif action == "delete":
+            item = await api.delete_item(item_id, user_id)
+            await callback.message.answer(
+                f"🗑 Report #{item['id']} moved to deleted.",
+                reply_markup=MAIN_KEYBOARD,
+            )
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 422:
-            await message.answer(
-                "Could not create item because of validation errors:\n"
-                f"{_format_validation_error(exc.response)}"
-            )
-            return
-        raise
-    await state.clear()
-    await message.answer(f"✅ Item created: #{item['id']} {item['title']}")
+        if exc.response.status_code == 403:
+            await callback.message.answer("You can manage only your own reports.", reply_markup=MAIN_KEYBOARD)
+        elif exc.response.status_code == 404:
+            await callback.message.answer("Report not found.", reply_markup=MAIN_KEYBOARD)
+        else:
+            await callback.message.answer("Could not complete this action right now.", reply_markup=MAIN_KEYBOARD)
 
-    matches = await api.get_matches(item["id"])
-    if matches:
-        match_lines = []
-        for m in matches:
-            reasons = ", ".join(m.get("reasons", [])[:3])
-            match_lines.append(
-                f"• {m['title']} ({m['category']}, {m['location']})\n"
-                f"  score={m['relevance_score']}/10, confidence={m.get('confidence', 'low')}\n"
-                f"  why: {reasons or 'similar context'}"
-            )
-        await message.answer("Possible smart matches:\n" + "\n".join(match_lines))
-    else:
-        await message.answer("No possible matches yet.")
+    await callback.answer()
 
 
 @dp.message(F.text)
 async def fallback(message: Message) -> None:
-    await message.answer("Try /new, /list, /search <keyword>, /lost, /found")
+    await message.answer("Try /new, /list, /search <keyword>, /lost, /found", reply_markup=MAIN_KEYBOARD)
 
 
 async def _check_length(message: Message, field_name: str, value: str) -> bool:
@@ -191,7 +627,7 @@ async def _check_length(message: Message, field_name: str, value: str) -> bool:
     else:
         return True
 
-    await message.answer(message_text)
+    await message.answer(message_text, reply_markup=FORM_KEYBOARD)
     return False
 
 
@@ -231,4 +667,5 @@ if __name__ == "__main__":
         print(f"[bot-config-error] {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
+    dp.startup.register(on_startup)
     dp.run_polling(bot)

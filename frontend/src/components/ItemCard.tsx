@@ -10,6 +10,9 @@ export const ItemCard = ({ item }: { item: Item }) => {
         </h3>
         <span className={`badge ${item.status}`}>{item.status}</span>
       </div>
+      <p>
+        Lifecycle: <strong>{item.lifecycle}</strong>
+      </p>
       <p>{item.description}</p>
       <div className="meta">
         <span>{item.category}</span>

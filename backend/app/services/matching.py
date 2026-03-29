@@ -1,13 +1,19 @@
+import logging
 import math
+import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 from rapidfuzz import fuzz
 from fastembed import TextEmbedding
 
 from app.core.config import get_settings
 from app.models.item import Item
+
+logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"[a-z0-9а-я]+", flags=re.IGNORECASE)
 PUNCT_RE = re.compile(r"[^\w\s]+", flags=re.UNICODE)
@@ -193,6 +199,32 @@ def _encoder() -> TextEmbedding:
     return TextEmbedding(model_name=settings.embedding_model_name)
 
 
+_EMBEDDING_AVAILABLE: bool | None = None
+
+
+def warmup_embedding_model() -> bool:
+    global _EMBEDDING_AVAILABLE
+    if _EMBEDDING_AVAILABLE is False:
+        return False
+
+    try:
+        _encoder()
+        _embed_text("embedding warmup text")
+        _EMBEDDING_AVAILABLE = True
+        logger.info("Embedding model warmup completed successfully.")
+        return True
+    except Exception as exc:
+        _EMBEDDING_AVAILABLE = False
+        logger.warning("Embedding model warmup failed; semantic scoring disabled: %s", exc)
+        return False
+
+
+def _semantic_available() -> bool:
+    if _EMBEDDING_AVAILABLE is None:
+        return warmup_embedding_model()
+    return _EMBEDDING_AVAILABLE
+
+
 @lru_cache(maxsize=4096)
 def _embed_text(text: str) -> tuple[float, ...]:
     vec = list(_encoder().embed([text]))[0]
@@ -255,9 +287,16 @@ def score_match_detailed(source: Item, candidate: Item) -> MatchDetails:
     if feature_brand > 0 or feature_model > 0:
         reasons.append("brand/model signal")
 
-    semantic_score = (1.0 + _cosine(_embed_text(src.combined), _embed_text(cand.combined))) / 2.0
-    if semantic_score > 0.70:
-        reasons.append("semantic similarity detected")
+    semantic_score = 0.0
+    if _semantic_available():
+        try:
+            semantic_score = (1.0 + _cosine(_embed_text(src.combined), _embed_text(cand.combined))) / 2.0
+            if semantic_score > 0.70:
+                reasons.append("semantic similarity detected")
+        except Exception as exc:
+            logger.warning("Semantic scoring failed; falling back to rule-based scoring only: %s", exc)
+            global _EMBEDDING_AVAILABLE
+            _EMBEDDING_AVAILABLE = False
 
     contradiction_penalty = 0.0
     if src.colors and cand.colors and not src.colors.intersection(cand.colors):
