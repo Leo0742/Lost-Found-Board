@@ -19,6 +19,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/lost_found}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       APP_ENV: ${APP_ENV:-dev}
+      HF_HUB_DISABLE_PROGRESS_BARS: ${HF_HUB_DISABLE_PROGRESS_BARS:-1}
+      EMBEDDING_WARMUP_ON_STARTUP: ${EMBEDDING_WARMUP_ON_STARTUP:-true}
+      HF_HOME: ${HF_HOME:-/models/huggingface}
+      ADMIN_SECRET: ${ADMIN_SECRET:-change-me-admin-secret}
+    volumes:
+      - hf_cache:/models/huggingface
+      - media_data:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -38,6 +45,8 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       API_BASE_URL: ${API_BASE_URL:-http://backend:8000/api}
+      API_TIMEOUT_SECONDS: ${API_TIMEOUT_SECONDS:-15}
+      MATCH_TIMEOUT_SECONDS: ${MATCH_TIMEOUT_SECONDS:-45}
     depends_on:
       - backend
     profiles:
@@ -45,3 +54,5 @@ services:
 
 volumes:
   postgres_data:
+  hf_cache:
+  media_data:
