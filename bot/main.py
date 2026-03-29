@@ -209,13 +209,13 @@ async def _cancel_wizard(message: Message, state: FSMContext) -> None:
 async def _show_help(message: Message) -> None:
     await message.answer(
         "Use the menu or keyboard:\n"
-        "• /new — post an item\n"
+        "• /new — guided multi-step report flow\n"
         "• /list — recent items\n"
         "• /search <query> — find by keyword\n"
         "• /lost /found — filtered lists\n"
-        "• /myitems — manage your reports\n"
-        "• /claims — track claim workflow\n"
-        "• /link <code> — connect website session\n"
+        "• /myitems — dashboard summary of your reports\n"
+        "• /claims — review your claim workflow\n"
+        "• /link <code> — connect website session securely\n"
         "• /flag <item_id> <reason> — report abuse\n"
         "• /whoami — show your account details\n"
         "• /clear — cancel current action",
@@ -427,6 +427,12 @@ async def cmd_claims(message: Message) -> None:
     if not claims:
         await message.answer("No claim requests yet.", reply_markup=MAIN_KEYBOARD)
         return
+    incoming = [claim for claim in claims if claim.get("owner_telegram_user_id") == message.from_user.id]
+    outgoing = [claim for claim in claims if claim.get("requester_telegram_user_id") == message.from_user.id]
+    await message.answer(
+        f"Claim Dashboard\nIncoming: {len(incoming)} • Outgoing: {len(outgoing)} • Total: {len(claims)}",
+        reply_markup=MAIN_KEYBOARD,
+    )
     for claim in claims[:20]:
         text = (
             f"Claim #{claim['id']} — {claim['status'].upper()}\n"
@@ -446,7 +452,10 @@ async def cmd_claims(message: Message) -> None:
 async def cmd_link(message: Message, command: CommandObject) -> None:
     code = (command.args or "").strip().upper()
     if not code:
-        await message.answer("Usage: /link <code>\nGet the code from website → Connect Telegram.", reply_markup=MAIN_KEYBOARD)
+        await message.answer(
+            "Usage: /link <code>\n\nWebsite flow:\n1) Open My Reports or Report Item.\n2) Generate secure link code.\n3) Paste here using /link.",
+            reply_markup=MAIN_KEYBOARD,
+        )
         return
     try:
         await api.confirm_web_link(
@@ -458,7 +467,10 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
     except httpx.HTTPError:
         await message.answer("Could not link this code. It may be expired. Generate a new code on the website.", reply_markup=MAIN_KEYBOARD)
         return
-    await message.answer("✅ Website linked to your Telegram account. Reload My Reports on the website.", reply_markup=MAIN_KEYBOARD)
+    await message.answer(
+        "✅ Website linked to your Telegram account.\nReload My Reports on the website to see synced ownership and claims.",
+        reply_markup=MAIN_KEYBOARD,
+    )
 
 
 @dp.message(Command("flag"))
