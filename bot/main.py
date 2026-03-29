@@ -10,7 +10,11 @@ from api_client import BackendClient
 from config import settings
 
 dp = Dispatcher()
-api = BackendClient(settings.api_base_url)
+api = BackendClient(
+    settings.api_base_url,
+    timeout_seconds=settings.api_timeout_seconds,
+    match_timeout_seconds=settings.match_timeout_seconds,
+)
 
 FIELD_LIMITS = {
     "title": (3, 120),
@@ -162,7 +166,15 @@ async def form_contact(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(f"✅ Item created: #{item['id']} {item['title']}")
 
-    matches = await api.get_matches(item["id"])
+    try:
+        matches = await api.get_matches(item["id"])
+    except (httpx.TimeoutException, httpx.HTTPError):
+        await message.answer(
+            "Item saved successfully. Smart matching is temporarily unavailable, "
+            "but we'll keep your item posted for rule-based discovery."
+        )
+        return
+
     if matches:
         match_lines = []
         for m in matches:
@@ -174,7 +186,7 @@ async def form_contact(message: Message, state: FSMContext) -> None:
             )
         await message.answer("Possible smart matches:\n" + "\n".join(match_lines))
     else:
-        await message.answer("No possible matches yet.")
+        await message.answer("No smart matches yet. We'll keep checking as new items arrive.")
 
 
 @dp.message(F.text)
