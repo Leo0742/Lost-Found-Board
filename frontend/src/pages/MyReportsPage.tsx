@@ -9,6 +9,7 @@ export const MyReportsPage = () => {
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [claimsError, setClaimsError] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [linkedUsername, setLinkedUsername] = useState<string | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
@@ -16,6 +17,7 @@ export const MyReportsPage = () => {
   const load = async () => {
     setLoading(true)
     setError(null)
+    setClaimsError(null)
     try {
       const me = await getAuthMe()
       if (!me.linked || !me.identity?.telegram_user_id) {
@@ -27,13 +29,17 @@ export const MyReportsPage = () => {
       }
       setLinkedUserId(me.identity.telegram_user_id)
       setLinkedUsername(me.identity.telegram_username || null)
-      const [myItems, incomingClaims] = await Promise.all([
-        fetchMyItems(),
-        listClaims(undefined, 'incoming')
-      ])
+      const myItems = await fetchMyItems()
       setItems(myItems.sort((a, b) => b.id - a.id))
-      setClaims(incomingClaims as Claim[])
       setLinkCode(null)
+      try {
+        const incomingClaims = await listClaims(undefined, 'incoming')
+        setClaims(incomingClaims as Claim[])
+      } catch (claimsErr) {
+        console.error(claimsErr)
+        setClaims([])
+        setClaimsError('Claims are temporarily unavailable. Your reports are still loaded.')
+      }
     } catch (err) {
       console.error(err)
       const axiosErr = err as AxiosError<{ detail?: string }>
@@ -95,6 +101,7 @@ export const MyReportsPage = () => {
       <p className="subtle">Server-driven ownership (Telegram-linked), synced across devices and bot.</p>
       {loading ? <p>Loading...</p> : null}
       {error ? <p className="error">{error}</p> : null}
+      {claimsError ? <p className="subtle">{claimsError}</p> : null}
 
       {!loading && !linkedUserId ? (
         <article className="card">

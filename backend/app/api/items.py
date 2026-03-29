@@ -103,6 +103,54 @@ def list_my_items_from_session(
     return service.list_my_items(auth_telegram_user_id)
 
 
+@router.post("/claim-requests", response_model=ClaimRead)
+def create_claim(
+    payload: ClaimCreate,
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> ClaimRead:
+    service = ItemService(db)
+    source = service.get_item(payload.source_item_id)
+    target = service.get_item(payload.target_item_id)
+    if not source or not target:
+        raise HTTPException(status_code=404, detail="Source or target item not found")
+    if source.lifecycle != ItemLifecycle.ACTIVE or target.lifecycle != ItemLifecycle.ACTIVE:
+        raise HTTPException(status_code=400, detail="Only active items can be claimed")
+    if source.moderation_status != ModerationStatus.APPROVED or target.moderation_status != ModerationStatus.APPROVED:
+        raise HTTPException(status_code=400, detail="Claim is allowed only for approved reports")
+    if source.status == target.status:
+        raise HTTPException(status_code=400, detail="Claim requires opposite lost/found reports")
+    source_owner_id = source.owner_telegram_user_id or source.telegram_user_id
+    actor_id = auth_telegram_user_id or payload.requester_telegram_user_id
+    if actor_id and source_owner_id != actor_id:
+        raise HTTPException(status_code=403, detail="Only source owner can create this claim")
+    claim = service.create_claim(
+        source,
+        target,
+        requester_telegram_user_id=actor_id or source_owner_id,
+        requester_name=payload.requester_name,
+        claim_message=payload.claim_message,
+    )
+    return service.claim_read(claim, viewer_telegram_user_id=actor_id or source_owner_id)
+
+
+@router.get("/claim-requests", response_model=list[ClaimRead])
+def list_claims(
+    telegram_user_id: int | None = Query(default=None),
+    direction: str = Query(default="all"),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> list[ClaimRead]:
+    if direction not in {"all", "incoming", "outgoing"}:
+        raise HTTPException(status_code=400, detail="direction must be one of: all, incoming, outgoing")
+    actor_id = auth_telegram_user_id or telegram_user_id
+    if not actor_id:
+        raise HTTPException(status_code=401, detail="Telegram identity is required")
+    service = ItemService(db)
+    claims = service.list_claims(telegram_user_id=actor_id, direction=direction)
+    return [service.claim_read(claim, viewer_telegram_user_id=actor_id) for claim in claims]
+
+
 @router.get("/{item_id}", response_model=ItemRead)
 def get_item(item_id: int, db: Session = Depends(get_db)) -> ItemRead:
     service = ItemService(db)
@@ -243,54 +291,6 @@ def get_matches(item_id: int, db: Session = Depends(get_db)) -> list[MatchResult
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return service.matches_for_item(item)
-
-
-@router.post("/claim-requests", response_model=ClaimRead)
-def create_claim(
-    payload: ClaimCreate,
-    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
-    db: Session = Depends(get_db),
-) -> ClaimRead:
-    service = ItemService(db)
-    source = service.get_item(payload.source_item_id)
-    target = service.get_item(payload.target_item_id)
-    if not source or not target:
-        raise HTTPException(status_code=404, detail="Source or target item not found")
-    if source.lifecycle != ItemLifecycle.ACTIVE or target.lifecycle != ItemLifecycle.ACTIVE:
-        raise HTTPException(status_code=400, detail="Only active items can be claimed")
-    if source.moderation_status != ModerationStatus.APPROVED or target.moderation_status != ModerationStatus.APPROVED:
-        raise HTTPException(status_code=400, detail="Claim is allowed only for approved reports")
-    if source.status == target.status:
-        raise HTTPException(status_code=400, detail="Claim requires opposite lost/found reports")
-    source_owner_id = source.owner_telegram_user_id or source.telegram_user_id
-    actor_id = auth_telegram_user_id or payload.requester_telegram_user_id
-    if actor_id and source_owner_id != actor_id:
-        raise HTTPException(status_code=403, detail="Only source owner can create this claim")
-    claim = service.create_claim(
-        source,
-        target,
-        requester_telegram_user_id=actor_id or source_owner_id,
-        requester_name=payload.requester_name,
-        claim_message=payload.claim_message,
-    )
-    return service.claim_read(claim, viewer_telegram_user_id=actor_id or source_owner_id)
-
-
-@router.get("/claim-requests", response_model=list[ClaimRead])
-def list_claims(
-    telegram_user_id: int | None = Query(default=None),
-    direction: str = Query(default="all"),
-    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
-    db: Session = Depends(get_db),
-) -> list[ClaimRead]:
-    if direction not in {"all", "incoming", "outgoing"}:
-        raise HTTPException(status_code=400, detail="direction must be one of: all, incoming, outgoing")
-    actor_id = auth_telegram_user_id or telegram_user_id
-    if not actor_id:
-        raise HTTPException(status_code=401, detail="Telegram identity is required")
-    service = ItemService(db)
-    claims = service.list_claims(telegram_user_id=actor_id, direction=direction)
-    return [service.claim_read(claim, viewer_telegram_user_id=actor_id) for claim in claims]
 
 
 @router.post("/claim-requests/{claim_id}/approve", response_model=ClaimRead)
