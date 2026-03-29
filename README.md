@@ -42,17 +42,43 @@ The codebase is intentionally modular for hackathon speed:
 - Filters: status (`lost`/`found`/all), keyword query, optional category.
 - Create item page.
 - Item detail page.
+- My Reports page uses server-side Telegram-linked ownership.
+- Lifecycle management from UI (`active`, `resolved`, `deleted`) for owned reports.
+- Optional photo upload with preview on report creation.
+- Photo thumbnails on cards and larger media view on details/matches.
+- Admin moderation page at `/admin` (secret-protected actions).
 - Responsive layout for phone/laptop.
 
 ### Backend API
 - `POST /api/items`
+- `GET /api/items/me` (requires Telegram-linked web session cookie)
 - `GET /api/items`
 - `GET /api/items/{id}`
 - `PATCH /api/items/{id}`
 - `DELETE /api/items/{id}`
+- `GET /api/items/mine/{telegram_user_id}`
+- `POST /api/items/{id}/resolve`
+- `POST /api/items/{id}/reopen`
+- `POST /api/items/{id}/delete` (soft delete)
+- `POST /api/items/upload-image` (multipart image upload)
 - `GET /api/items/search?q=...`
 - `GET /api/items/matches/{id}`
+- `GET /api/items/admin/items` (requires `X-Admin-Secret`)
+- `POST /api/items/admin/items/{id}/moderate` (approve/reject/flag/unflag)
+- `POST /api/items/admin/items/{id}/verify`
+- `POST /api/items/admin/items/{id}/lifecycle` (resolve/reopen/delete)
+- `POST /api/items/{id}/flag` (public abuse report)
+- `POST /api/items/claim-requests`
+- `GET /api/items/claim-requests?telegram_user_id=...`
+  - Optional `direction`: `all` (default), `incoming`, `outgoing`
+- `POST /api/items/claim-requests/{id}/approve|reject|cancel|complete|not-match`
 - OpenAPI docs at `/docs`.
+- Auth/session endpoints:
+  - `POST /api/auth/session`
+  - `GET /api/auth/me`
+  - `POST /api/auth/link-code`
+  - `POST /api/auth/link/confirm` (used by bot `/link`)
+  - `POST /api/auth/logout`
 
 ### Telegram assistant
 - `/start`
@@ -61,7 +87,13 @@ The codebase is intentionally modular for hackathon speed:
 - `/search <query>`
 - `/lost`
 - `/found`
-- After `/new`, bot displays possible matches from backend.
+- `/myitems` for ownership-based report management.
+- `/link <code>` to bind website session with Telegram account.
+- `/flag <item_id> <reason>` to report abuse/spam.
+- `/claims` to track claim/contact workflow.
+- `/clear` cancels ongoing flows and resets state.
+- `/new` wizard includes a photo step (send photo or skip).
+- After `/new`, bot displays matches and sends strong-match notifications to relevant Telegram owners.
 
 ### Matching logic (hybrid local, no external API)
 - Opposite status hard filter (`lost` vs `found`).
@@ -111,6 +143,91 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Model runs locally on CPU and model files are cached on first use.
 - No external inference API calls are used (local inference only).
 - You can override model via env: `EMBEDDING_MODEL_NAME=<model-name>`.
+
+## Item Lifecycle & Management
+
+- Reports now have a lifecycle field:
+  - `active` (default)
+  - `resolved`
+  - `deleted` (soft delete)
+- Matching/search defaults to active reports.
+- Resolved/deleted reports are excluded from normal match candidate pools.
+- Ownership-sensitive actions (`resolve/reopen/delete`) are server-authorized using linked Telegram identity (web session) or bot Telegram id.
+- Raw `DELETE /api/items/{id}` is admin-only (`X-Admin-Secret`) and should be treated as moderation-only.
+
+## Moderation & Trust/Safety
+
+- Reports have moderation status: `pending`, `approved`, `rejected`, `flagged`.
+- Default moderation is `approved` for quick publishing.
+- Public listing/search/matches only use `approved` reports.
+- Rejected/flagged reports are removed from normal public matching flows.
+- Reports can be marked as verified (`is_verified=true`) by admins to improve trust signals.
+
+## Claim / Contact / Handoff Flow
+
+- Users can create a claim from one matched item to another (`pending`).
+- Target owner can approve/reject; requester can cancel; either participant can mark complete/not-match.
+- Contact details are shared only after claim is `approved` or `completed`.
+- Completing a claim resolves both linked items.
+- Marking not-match prevents that pair from being surfaced again as a primary match candidate.
+
+## Admin Access (Lightweight)
+
+- Admin APIs require header: `X-Admin-Secret: <ADMIN_SECRET>`.
+- Admin secret is configured by env var `ADMIN_SECRET`.
+- Website admin UI is available at `/admin` and requires entering the secret before loading data.
+
+## Anti-Spam Rules
+
+- Rate limit on create: max `CREATE_RATE_LIMIT_MAX_ITEMS` within `CREATE_RATE_LIMIT_WINDOW_MINUTES`.
+- Duplicate protection blocks repeated same title/description/contact within 24 hours.
+- Very low-quality/gibberish-like text submissions are rejected.
+
+## Media Storage (Local, Persistent)
+
+- Uploaded photos are stored locally in backend media directory: `/app/media`.
+- Backend serves files via `/media/<image_path>`.
+- Docker compose mounts a persistent named volume for media (`media_data`) so files survive container restarts.
+- Supported image types: JPEG / PNG / WEBP.
+- Max upload size is controlled by backend setting `MEDIA_MAX_BYTES` (default: 5MB).
+
+## Bot: My Items & Management
+
+- Use `/myitems` (or **My Items** keyboard button) to list and manage your reports.
+- Each item card includes actions:
+  - Show Matches
+  - Mark Resolved / Reopen
+  - Delete (soft)
+- Bot verifies ownership via the same Telegram identity used by linked web sessions.
+- When item photos exist, `/myitems` cards are sent as photo messages with captions.
+
+## Bot: Photo Upload Flow
+
+- In `/new`, the wizard now includes a **Photo** step.
+- User can:
+  - send a photo
+  - tap **Skip Photo**
+- Back/Cancel behavior still works across wizard steps.
+- Review screen shows whether a photo is attached.
+
+## Website Ownership: Telegram Linked (server-side source of truth)
+
+- localStorage is **not** used as ownership source of truth anymore.
+- Website creates/uses an HTTP-only session cookie (`lfb_session`) on backend.
+- User clicks **Connect Telegram** in web UI, gets short link code, and sends `/link <code>` to the Telegram bot.
+- Bot confirms link via `POST /api/auth/link/confirm`; backend stores Telegram identity in the session.
+- `My Reports` now loads from `GET /api/items/me` and ownership checks are performed server-side.
+- Reports created from website are stored with owner identity fields (`owner_telegram_user_id`, `owner_telegram_username`, `owner_display_name`).
+- The same owner identity is used in bot `/myitems`, claims, and lifecycle actions across devices.
+
+## Automatic Match Notifications (Bot)
+
+- After creating a new item in bot, if strong matches are found (score threshold), bot:
+  - notifies the creator
+  - notifies matched item owners when `telegram_user_id` is available
+- Notification failures are swallowed and do not block item creation flow.
+- If matched items include photos, notifications may include image media.
+- Matches are moderation-aware: rejected/flagged items are excluded from match candidates.
 
 ## Local Development (without Docker)
 

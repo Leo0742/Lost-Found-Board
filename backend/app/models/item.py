@@ -12,6 +12,19 @@ class ItemStatus(str, Enum):
     FOUND = "found"
 
 
+class ItemLifecycle(str, Enum):
+    ACTIVE = "active"
+    RESOLVED = "resolved"
+    DELETED = "deleted"
+
+
+class ModerationStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    FLAGGED = "flagged"
+
+
 class Item(Base):
     __tablename__ = "items"
 
@@ -29,10 +42,43 @@ class Item(Base):
         ),
         nullable=False,
     )
+    lifecycle: Mapped[ItemLifecycle] = mapped_column(
+        SqlEnum(
+            ItemLifecycle,
+            name="item_lifecycle",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            validate_strings=True,
+        ),
+        nullable=False,
+        default=ItemLifecycle.ACTIVE,
+    )
+    moderation_status: Mapped[ModerationStatus] = mapped_column(
+        SqlEnum(
+            ModerationStatus,
+            name="moderation_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            validate_strings=True,
+        ),
+        nullable=False,
+        default=ModerationStatus.APPROVED,
+    )
+    moderation_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    moderated_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     contact_name: Mapped[str] = mapped_column(String(80), nullable=False)
     telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
     telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    owner_telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    owner_telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    owner_display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_mime_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
