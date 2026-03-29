@@ -1,0 +1,32 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #111827;
+  background: #f8fafc;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+.container { width: min(1000px, 92vw); margin: 0 auto; }
+.header { background: #0f172a; color: white; padding: 0.8rem 0; }
+.header .container { display: flex; justify-content: space-between; align-items: center; }
+.header a { color: white; text-decoration: none; margin-left: 1rem; }
+.brand { font-weight: 700; margin: 0 !important; }
+.content { padding: 1.5rem 0 3rem; }
+h1 { margin-bottom: 0.3rem; }
+.subtle { color: #64748b; margin-top: 0; }
+.filters, .form { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 8px 24px rgba(15,23,42,0.08); display: grid; gap: 0.75rem; margin-bottom: 1.25rem; }
+.filters { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; }
+input, select, textarea, button { font: inherit; padding: 0.65rem 0.75rem; border-radius: 8px; border: 1px solid #cbd5e1; }
+button { background: #2563eb; color: white; border: none; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.card, .details { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 8px 24px rgba(15,23,42,0.08); }
+.card-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.badge { text-transform: uppercase; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 999px; font-weight: 600; }
+.badge.lost { background: #fee2e2; color: #b91c1c; }
+.badge.found { background: #dcfce7; color: #166534; }
+.meta { display: flex; justify-content: space-between; color: #64748b; font-size: 0.9rem; }
+label { display: grid; gap: 0.35rem; }
+.error { color: #b91c1c; }
+@media (max-width: 640px) {
+  .header .container { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+}
