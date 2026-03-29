@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import BotCommand, KeyboardButton, Message, ReplyKeyboardMarkup
 
 from api_client import BackendClient
 from config import settings
@@ -24,6 +24,27 @@ FIELD_LIMITS = {
     "contact_name": (2, 80),
 }
 
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="New Item"), KeyboardButton(text="Recent Items")],
+        [KeyboardButton(text="Search"), KeyboardButton(text="Lost Items"), KeyboardButton(text="Found Items")],
+        [KeyboardButton(text="Help"), KeyboardButton(text="Clear")],
+    ],
+    resize_keyboard=True,
+    input_field_placeholder="Choose an action",
+)
+
+BOT_COMMANDS = [
+    BotCommand(command="start", description="restart the bot"),
+    BotCommand(command="help", description="show instructions"),
+    BotCommand(command="new", description="create a lost/found item"),
+    BotCommand(command="list", description="show recent items"),
+    BotCommand(command="search", description="search items"),
+    BotCommand(command="lost", description="show lost items"),
+    BotCommand(command="found", description="show found items"),
+    BotCommand(command="clear", description="cancel current action and clear chat state"),
+]
+
 
 class NewItemForm(StatesGroup):
     status = State()
@@ -34,12 +55,50 @@ class NewItemForm(StatesGroup):
     contact = State()
 
 
-@dp.message(Command("start"))
-async def cmd_start(message: Message) -> None:
+async def _clear_state(state: FSMContext) -> None:
+    await state.clear()
+
+
+async def _show_help(message: Message) -> None:
     await message.answer(
-        "👋 Welcome to Lost & Found Board assistant.\n"
-        "Use /new to post an item, /list to see recent posts, /search <keyword> to find items."
+        "Use the menu or keyboard:\n"
+        "• /new — post an item\n"
+        "• /list — recent items\n"
+        "• /search <query> — find by keyword\n"
+        "• /lost /found — filtered lists\n"
+        "• /clear — cancel current action",
+        reply_markup=MAIN_KEYBOARD,
     )
+
+
+async def _set_bot_commands(bot: Bot) -> None:
+    await bot.set_my_commands(BOT_COMMANDS)
+
+
+async def on_startup(bot: Bot) -> None:
+    await _set_bot_commands(bot)
+
+
+@dp.message(Command("start"))
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    await _clear_state(state)
+    await message.answer(
+        "👋 Welcome to Lost & Found Board assistant.",
+        reply_markup=MAIN_KEYBOARD,
+    )
+    await _show_help(message)
+
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message, state: FSMContext) -> None:
+    await _clear_state(state)
+    await _show_help(message)
+
+
+@dp.message(Command("clear"))
+async def cmd_clear(message: Message, state: FSMContext) -> None:
+    await _clear_state(state)
+    await message.answer("Current action cleared. You can start again.", reply_markup=MAIN_KEYBOARD)
 
 
 @dp.message(Command("list"))
@@ -84,6 +143,41 @@ async def cmd_search(message: Message, command: CommandObject) -> None:
 async def cmd_new(message: Message, state: FSMContext) -> None:
     await state.set_state(NewItemForm.status)
     await message.answer("Is the item *lost* or *found*?", parse_mode="Markdown")
+
+
+@dp.message(F.text.casefold() == "new item")
+async def keyboard_new_item(message: Message, state: FSMContext) -> None:
+    await cmd_new(message, state)
+
+
+@dp.message(F.text.casefold() == "recent items")
+async def keyboard_recent_items(message: Message) -> None:
+    await cmd_list(message)
+
+
+@dp.message(F.text.casefold() == "search")
+async def keyboard_search_hint(message: Message) -> None:
+    await message.answer("Send /search <keyword> to search items.", reply_markup=MAIN_KEYBOARD)
+
+
+@dp.message(F.text.casefold() == "lost items")
+async def keyboard_lost_items(message: Message) -> None:
+    await cmd_lost(message)
+
+
+@dp.message(F.text.casefold() == "found items")
+async def keyboard_found_items(message: Message) -> None:
+    await cmd_found(message)
+
+
+@dp.message(F.text.casefold() == "help")
+async def keyboard_help(message: Message, state: FSMContext) -> None:
+    await cmd_help(message, state)
+
+
+@dp.message(F.text.casefold() == "clear")
+async def keyboard_clear(message: Message, state: FSMContext) -> None:
+    await cmd_clear(message, state)
 
 
 @dp.message(NewItemForm.status)
@@ -164,7 +258,7 @@ async def form_contact(message: Message, state: FSMContext) -> None:
             return
         raise
     await state.clear()
-    await message.answer(f"✅ Item created: #{item['id']} {item['title']}")
+    await message.answer(f"✅ Item created: #{item['id']} {item['title']}", reply_markup=MAIN_KEYBOARD)
 
     try:
         matches = await api.get_matches(item["id"])
@@ -243,4 +337,5 @@ if __name__ == "__main__":
         print(f"[bot-config-error] {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
+    dp.startup.register(on_startup)
     dp.run_polling(bot)
