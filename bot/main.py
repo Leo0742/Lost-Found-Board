@@ -1,5 +1,6 @@
-from aiogram import Bot, Dispatcher, F
 import sys
+import httpx
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -10,6 +11,14 @@ from config import settings
 
 dp = Dispatcher()
 api = BackendClient(settings.api_base_url)
+
+FIELD_LIMITS = {
+    "title": (3, 120),
+    "category": (2, 60),
+    "location": (2, 120),
+    "description": (5, 2000),
+    "contact_name": (2, 80),
+}
 
 
 class NewItemForm(StatesGroup):
@@ -86,28 +95,40 @@ async def form_status(message: Message, state: FSMContext) -> None:
 
 @dp.message(NewItemForm.title)
 async def form_title(message: Message, state: FSMContext) -> None:
-    await state.update_data(title=message.text.strip())
+    title = message.text.strip()
+    if not await _check_length(message, "title", title):
+        return
+    await state.update_data(title=title)
     await state.set_state(NewItemForm.category)
     await message.answer("Category? (e.g. Electronics, Bags, Accessories)")
 
 
 @dp.message(NewItemForm.category)
 async def form_category(message: Message, state: FSMContext) -> None:
-    await state.update_data(category=message.text.strip())
+    category = message.text.strip()
+    if not await _check_length(message, "category", category):
+        return
+    await state.update_data(category=category)
     await state.set_state(NewItemForm.location)
     await message.answer("Where was it lost/found?")
 
 
 @dp.message(NewItemForm.location)
 async def form_location(message: Message, state: FSMContext) -> None:
-    await state.update_data(location=message.text.strip())
+    location = message.text.strip()
+    if not await _check_length(message, "location", location):
+        return
+    await state.update_data(location=location)
     await state.set_state(NewItemForm.description)
     await message.answer("Short description?")
 
 
 @dp.message(NewItemForm.description)
 async def form_description(message: Message, state: FSMContext) -> None:
-    await state.update_data(description=message.text.strip())
+    description = message.text.strip()
+    if not await _check_length(message, "description", description):
+        return
+    await state.update_data(description=description)
     await state.set_state(NewItemForm.contact)
     await message.answer("Contact name? (or type 'me' to use your Telegram username)")
 
@@ -118,6 +139,8 @@ async def form_contact(message: Message, state: FSMContext) -> None:
     username = message.from_user.username
     contact_raw = message.text.strip()
     contact_name = f"@{username}" if contact_raw.lower() == "me" and username else contact_raw
+    if not await _check_length(message, "contact_name", contact_name):
+        return
 
     payload = {
         **data,
@@ -126,7 +149,16 @@ async def form_contact(message: Message, state: FSMContext) -> None:
         "telegram_user_id": message.from_user.id,
     }
 
-    item = await api.create_item(payload)
+    try:
+        item = await api.create_item(payload)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 422:
+            await message.answer(
+                "Could not create item because of validation errors:\n"
+                f"{_format_validation_error(exc.response)}"
+            )
+            return
+        raise
     await state.clear()
     await message.answer(f"✅ Item created: #{item['id']} {item['title']}")
 
@@ -143,6 +175,39 @@ async def form_contact(message: Message, state: FSMContext) -> None:
 @dp.message(F.text)
 async def fallback(message: Message) -> None:
     await message.answer("Try /new, /list, /search <keyword>, /lost, /found")
+
+
+async def _check_length(message: Message, field_name: str, value: str) -> bool:
+    min_length, max_length = FIELD_LIMITS[field_name]
+    if len(value) < min_length:
+        message_text = f"{field_name.replace('_', ' ').title()} is too short (min {min_length} characters)."
+    elif len(value) > max_length:
+        message_text = f"{field_name.replace('_', ' ').title()} is too long (max {max_length} characters)."
+    else:
+        return True
+
+    await message.answer(message_text)
+    return False
+
+
+def _format_validation_error(response: httpx.Response) -> str:
+    try:
+        details = response.json().get("detail")
+    except ValueError:
+        return "Unexpected validation response from backend."
+
+    if not isinstance(details, list) or not details:
+        return "Request failed validation, but no details were returned."
+
+    issues = []
+    for issue in details:
+        if not isinstance(issue, dict):
+            continue
+        loc = issue.get("loc")
+        field = loc[-1] if isinstance(loc, list) and loc else "field"
+        msg = issue.get("msg", "invalid value")
+        issues.append(f"• {field}: {msg}")
+    return "\n".join(issues) if issues else "Request failed validation."
 
 
 def create_bot() -> Bot:
