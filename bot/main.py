@@ -164,10 +164,15 @@ async def form_contact(message: Message, state: FSMContext) -> None:
 
     matches = await api.get_matches(item["id"])
     if matches:
-        match_text = "\n".join(
-            f"• {m['title']} ({m['category']}, {m['location']}) score={m['relevance_score']}" for m in matches
-        )
-        await message.answer("Possible matches:\n" + match_text)
+        match_lines = []
+        for m in matches:
+            reasons = ", ".join(m.get("reasons", [])[:3])
+            match_lines.append(
+                f"• {m['title']} ({m['category']}, {m['location']})\n"
+                f"  score={m['relevance_score']}/10, confidence={m.get('confidence', 'low')}\n"
+                f"  why: {reasons or 'similar context'}"
+            )
+        await message.answer("Possible smart matches:\n" + "\n".join(match_lines))
     else:
         await message.answer("No possible matches yet.")
 

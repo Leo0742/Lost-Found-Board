@@ -23,3 +23,15 @@ export interface NewItemPayload {
   contact_name: string
   telegram_username?: string
 }
+
+
+export interface MatchResult {
+  id: number
+  title: string
+  status: ItemStatus
+  category: string
+  location: string
+  relevance_score: number
+  confidence: 'low' | 'medium' | 'high'
+  reasons: string[]
+}

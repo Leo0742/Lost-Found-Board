@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import { Item, NewItemPayload, ItemStatus } from '../types/item'
+import { Item, NewItemPayload, ItemStatus, MatchResult } from '../types/item'
 
 export const fetchItems = async (params: { q?: string; status?: ItemStatus | 'all'; category?: string }) => {
   const query: Record<string, string> = {}
@@ -13,6 +13,11 @@ export const fetchItems = async (params: { q?: string; status?: ItemStatus | 'al
 
 export const fetchItem = async (id: string) => {
   const response = await apiClient.get<Item>(`/items/${id}`)
+  return response.data
+}
+
+export const fetchMatches = async (id: string) => {
+  const response = await apiClient.get<MatchResult[]>(`/items/matches/${id}`)
   return response.data
 }
 

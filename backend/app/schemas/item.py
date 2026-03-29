@@ -47,3 +47,5 @@ class MatchResult(BaseModel):
     category: str
     location: str
     relevance_score: float
+    confidence: str
+    reasons: list[str] = Field(default_factory=list)
