@@ -63,12 +63,14 @@ The codebase is intentionally modular for hackathon speed:
 - `/found`
 - After `/new`, bot displays possible matches from backend.
 
-### Matching logic (rule-based)
-- Opposite status only (`lost` vs `found`).
-- Same category boost.
-- Keyword overlap in title/description.
-- Similar location token overlap.
-- Returns top scored results.
+### Matching logic (hybrid local, no external API)
+- Opposite status hard filter (`lost` vs `found`).
+- Text normalization (case/punctuation cleanup, alias/synonym mapping, simple RU->EN transliteration, location alias normalization).
+- Rule-based signals (category compatibility, keyword overlap, location overlap).
+- Fuzzy matching with RapidFuzz for title/location/object-type robustness to typos.
+- Local semantic similarity using FastEmbed (CPU model, no cloud inference).
+- Lightweight reranking/boosting based on semantic + extracted feature alignment.
+- Match output includes score, confidence (`high`/`medium`/`low`), and human-readable reasons.
 
 ## Quick Start (Docker Compose)
 
@@ -101,6 +103,14 @@ The codebase is intentionally modular for hackathon speed:
    ```
 
 If the bot profile is enabled without a valid token, the bot container exits immediately with a clear `TELEGRAM_BOT_TOKEN is required` message.
+
+
+## Local Semantic Model Notes
+
+- Backend uses FastEmbed with `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` by default.
+- Model runs locally on CPU and model files are cached on first use.
+- No external inference API calls are used (local inference only).
+- You can override model via env: `EMBEDDING_MODEL_NAME=<model-name>`.
 
 ## Local Development (without Docker)
 
@@ -149,3 +159,40 @@ pytest
 - Run `docker compose up -d --build`.
 - Put VM domain/IP in front of Caddy port 80.
 - For HTTPS, update `frontend/Caddyfile` to use your domain and TLS email.
+
+
+## Exact Run Instructions (Docker)
+
+```bash
+cp .env.example .env
+docker compose down -v
+docker compose up --build
+```
+
+Then open:
+- `http://localhost` (frontend)
+- `http://localhost/api/docs` (backend docs)
+
+## Verification Checklist
+
+1. Create a `lost` item: `black wallet with student card` in `dormitory A entrance`.
+2. Create a `found` item: `dark card holder found near dorm A`.
+3. Open item details or call `GET /api/items/matches/{id}`.
+4. Confirm a match appears with:
+   - score (0-10),
+   - confidence label,
+   - reasons like `matching object type`, `similar location`, `semantic similarity detected`.
+5. Try typo case (`airpods csae` vs `apple earbuds case`) and confirm it still matches.
+
+## Demo Scenario
+
+Input pair:
+- Lost: `black wallet with student card`, location `dormitory A entrance`
+- Found: `dark card holder found near dorm`, location `near dorm A`
+
+Expected behavior:
+- `dark -> black` and `card holder -> wallet` normalization aligns terms.
+- Location aliases normalize to the same campus zone.
+- Fuzzy matching tolerates wording differences.
+- Embedding similarity catches contextual equivalence.
+- Match is returned with medium/high confidence and explanation reasons.

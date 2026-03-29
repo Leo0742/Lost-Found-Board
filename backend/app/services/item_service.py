@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.item import Item, ItemStatus
 from app.schemas.item import ItemCreate, ItemUpdate, MatchResult
-from app.services.matching import score_match
+from app.services.matching import score_match_detailed
 
 
 class ItemService:
@@ -50,11 +50,11 @@ class ItemService:
         for candidate in candidates:
             if candidate.id == item.id:
                 continue
-            score = score_match(item, candidate)
-            if score > 1.0:
-                scored.append((candidate, score))
+            details = score_match_detailed(item, candidate)
+            if details.score >= 3.5:
+                scored.append((candidate, details))
 
-        scored.sort(key=lambda pair: pair[1], reverse=True)
+        scored.sort(key=lambda pair: pair[1].score, reverse=True)
         return [
             MatchResult(
                 id=c.id,
@@ -62,7 +62,9 @@ class ItemService:
                 status=c.status,
                 category=c.category,
                 location=c.location,
-                relevance_score=s,
+                relevance_score=d.score,
+                confidence=d.confidence,
+                reasons=d.reasons,
             )
-            for c, s in scored[:limit]
+            for c, d in scored[:limit]
         ]

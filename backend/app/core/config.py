@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/lost_found"
     cors_origins: str = "*"
+    embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
