@@ -18,10 +18,14 @@ export type WhoAmI = {
 export type AuditEvent = {
   id: number
   event_type: string
+  label?: string | null
+  summary?: string | null
   actor_telegram_user_id?: number | null
   item_id?: number | null
   claim_id?: number | null
   details?: Record<string, unknown>
+  item_url?: string | null
+  claim_url?: string | null
   created_at: string
 }
 
@@ -31,6 +35,8 @@ export type ModerationSignal = {
   recent_flags_24h: number
   recent_claims_24h: number
   claim_count: number
+  duplicate_flags_24h: number
+  blocked_events_24h: number
   last_flag_at?: string | null
   suspicion_markers: string[]
 }
@@ -141,7 +147,7 @@ export const fetchMyItems = async () => {
   return response.data
 }
 
-export const fetchAdminItems = async (params: { moderation_status?: string; lifecycle?: string; q?: string; category?: string; status?: string; is_verified?: boolean; actor_telegram_user_id?: number; sort_by?: string; sort_order?: string; limit?: number; offset?: number }) => {
+export const fetchAdminItems = async (params: { moderation_status?: string; lifecycle?: string; q?: string; category?: string; status?: string; is_verified?: boolean; actor_telegram_user_id?: number; created_from?: string; created_to?: string; sort_by?: string; sort_order?: string; limit?: number; offset?: number }) => {
   const response = await apiClient.get<Item[]>('/items/admin/items', {
     params
   })

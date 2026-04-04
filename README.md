@@ -192,7 +192,10 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 
 - Uploads are first saved as temporary files under `media/tmp`.
 - During item creation/update, referenced temporary media is promoted to permanent media.
+- Replacing an item image removes the old finalized media file to avoid stale leftovers.
+- Hard/soft deletes remove linked media file paths immediately.
 - Stale temporary files are cleaned on startup and periodically (controlled by `MEDIA_CLEANUP_INTERVAL_MINUTES`, default 60).
+- Orphan finalized files (not referenced by DB) are cleaned conservatively after age cutoff.
 - If create/update fails after a temp upload is referenced, the temp file is removed immediately to reduce orphan risk.
 - TTL for stale temp files remains configurable with `MEDIA_TMP_TTL_HOURS` (default 24).
 
@@ -210,8 +213,10 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 ## Abuse controls and moderation productivity (latest pass)
 
 - Added backend-enforced rate limiting for risky endpoints (`create item`, `upload image`, `link-code`, `link confirm`, `flag item`, `claim create`, `search-smart`, `category-suggest`, `admin audit list`) with clear `429` responses and action-specific messages.
-- Duplicate public flags are blocked per actor/session/IP + item + normalized reason in a 24h window.
-- Admin console now supports stronger queue filtering and sorting (moderation/lifecycle/status/verification/category/owner actor/query), abuse signals per item, and improved audit filters/pagination.
+- Duplicate public flags are blocked per actor/session/IP + item + normalized reason in a 24h window, with duplicate attempts tracked as separate anti-abuse signals.
+- Claim creation now has stronger duplicate suppression for repeated same-pair submissions within 24h.
+- Anti-abuse event retention cleanup runs on startup/interval to prevent unbounded table growth (`ANTI_ABUSE_EVENT_RETENTION_DAYS`).
+- Admin console now supports stronger queue filtering and sorting (moderation/lifecycle/status/verification/category/owner actor/query/date-range), queue presets, richer abuse signals per item, and improved audit filters/pagination with readable event summaries.
 - Added moderation visibility endpoints:
   - `GET /api/items/admin/moderation-stats`
   - `GET /api/items/admin/moderation-signals?item_ids=...`
@@ -219,15 +224,16 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 
 ### Rate limit env configuration
 
-- `CREATE_RATE_LIMIT_WINDOW_MINUTES`, `CREATE_RATE_LIMIT_MAX_ITEMS`
-- `UPLOAD_RATE_LIMIT_WINDOW_MINUTES`, `UPLOAD_RATE_LIMIT_MAX`
+- `CREATE_RATE_LIMIT_WINDOW_MINUTES`, `CREATE_RATE_LIMIT_MAX_ITEMS`, `CREATE_RATE_LIMIT_MAX_ITEMS_ANON`
+- `UPLOAD_RATE_LIMIT_WINDOW_MINUTES`, `UPLOAD_RATE_LIMIT_MAX`, `UPLOAD_RATE_LIMIT_MAX_ANON`
 - `LINK_CODE_RATE_LIMIT_WINDOW_MINUTES`, `LINK_CODE_RATE_LIMIT_MAX`
 - `LINK_CONFIRM_RATE_LIMIT_WINDOW_MINUTES`, `LINK_CONFIRM_RATE_LIMIT_MAX`
-- `FLAG_RATE_LIMIT_WINDOW_MINUTES`, `FLAG_RATE_LIMIT_MAX`
-- `CLAIM_RATE_LIMIT_WINDOW_MINUTES`, `CLAIM_RATE_LIMIT_MAX`
+- `FLAG_RATE_LIMIT_WINDOW_MINUTES`, `FLAG_RATE_LIMIT_MAX`, `FLAG_RATE_LIMIT_MAX_ANON`
+- `CLAIM_RATE_LIMIT_WINDOW_MINUTES`, `CLAIM_RATE_LIMIT_MAX`, `CLAIM_RATE_LIMIT_MAX_ANON`
 - `SMART_SEARCH_RATE_LIMIT_WINDOW_MINUTES`, `SMART_SEARCH_RATE_LIMIT_MAX`
 - `CATEGORY_SUGGEST_RATE_LIMIT_WINDOW_MINUTES`, `CATEGORY_SUGGEST_RATE_LIMIT_MAX`
 - `ADMIN_AUDIT_RATE_LIMIT_WINDOW_MINUTES`, `ADMIN_AUDIT_RATE_LIMIT_MAX`
+- `ANTI_ABUSE_EVENT_RETENTION_DAYS`
 
 ## Moderation & Trust/Safety
 

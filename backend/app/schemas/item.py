@@ -176,10 +176,14 @@ class InternalClaimAction(ClaimAction):
 class AuditEventRead(BaseModel):
     id: int
     event_type: str
+    label: str | None = None
+    summary: str | None = None
     actor_telegram_user_id: int | None = None
     item_id: int | None = None
     claim_id: int | None = None
     details: dict = Field(default_factory=dict)
+    item_url: str | None = None
+    claim_url: str | None = None
     created_at: datetime
 
 
@@ -189,6 +193,8 @@ class ModerationSignalRead(BaseModel):
     recent_flags_24h: int = 0
     recent_claims_24h: int = 0
     claim_count: int = 0
+    duplicate_flags_24h: int = 0
+    blocked_events_24h: int = 0
     last_flag_at: datetime | None = None
     suspicion_markers: list[str] = Field(default_factory=list)
 

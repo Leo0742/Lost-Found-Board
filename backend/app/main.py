@@ -14,8 +14,10 @@ from app.api.items import router as items_router
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.services.matching import semantic_runtime_status, warmup_embedding_model
-from app.services.media import cleanup_stale_temp_uploads, ensure_media_dirs
+from app.services.media import cleanup_stale_temp_uploads, ensure_media_dirs, cleanup_finalized_orphans
 from app.services.readiness import check_readiness
+from app.services.anti_abuse import cleanup_expired_events
+from app.db.session import SessionLocal
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -28,6 +30,17 @@ async def lifespan(_: FastAPI):
     cleaned = cleanup_stale_temp_uploads()
     if cleaned:
         logger.info("Removed %s stale temporary media files on startup.", cleaned)
+    finalized_removed = cleanup_finalized_orphans()
+    if finalized_removed:
+        logger.info("Removed %s orphaned finalized media files on startup.", finalized_removed)
+
+    try:
+        with SessionLocal() as db:
+            abuse_removed = cleanup_expired_events(db, retention_days=settings.anti_abuse_event_retention_days)
+        if abuse_removed:
+            logger.info("Removed %s expired anti-abuse events on startup.", abuse_removed)
+    except Exception as exc:
+        logger.info("Skipping anti-abuse retention cleanup on startup: %s", exc)
 
     if settings.embedding_warmup_on_startup:
         warmup_embedding_model()
@@ -50,6 +63,16 @@ async def lifespan(_: FastAPI):
             removed = cleanup_stale_temp_uploads()
             if removed:
                 logger.info("Periodic cleanup removed %s stale temp media files.", removed)
+            orphans = cleanup_finalized_orphans()
+            if orphans:
+                logger.info("Periodic cleanup removed %s orphaned finalized media files.", orphans)
+            try:
+                with SessionLocal() as db:
+                    expired = cleanup_expired_events(db, retention_days=settings.anti_abuse_event_retention_days)
+                if expired:
+                    logger.info("Periodic cleanup removed %s expired anti-abuse events.", expired)
+            except Exception as exc:
+                logger.info("Skipping anti-abuse retention cleanup: %s", exc)
 
     cleanup_task = asyncio.create_task(_periodic_temp_cleanup())
     try:

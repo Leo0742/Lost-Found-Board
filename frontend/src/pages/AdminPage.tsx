@@ -16,6 +16,8 @@ import {
 import { Item } from '../types/item'
 import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
 
+type QueuePreset = 'flagged' | 'pending' | 'recent' | 'suspicious'
+
 export const AdminPage = () => {
   const [authLoading, setAuthLoading] = useState(true)
   const [linked, setLinked] = useState(false)
@@ -36,13 +38,18 @@ export const AdminPage = () => {
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState('desc')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [auditType, setAuditType] = useState('')
   const [auditActor, setAuditActor] = useState('')
   const [auditItem, setAuditItem] = useState('')
   const [auditClaim, setAuditClaim] = useState('')
+  const [auditCreatedFrom, setAuditCreatedFrom] = useState('')
+  const [auditCreatedTo, setAuditCreatedTo] = useState('')
   const [auditOffset, setAuditOffset] = useState(0)
+  const [auditLimit, setAuditLimit] = useState(30)
 
   const loadItems = async () => {
     const rows = await fetchAdminItems({
@@ -53,10 +60,12 @@ export const AdminPage = () => {
       category: categoryFilter || undefined,
       actor_telegram_user_id: actorFilter ? Number(actorFilter) : undefined,
       q: query || undefined,
+      created_from: createdFrom || undefined,
+      created_to: createdTo || undefined,
       sort_by: sortBy,
       sort_order: sortOrder,
       limit: 200,
-    })
+    } as Record<string, unknown>)
     setItems(rows)
     const signalRows = await fetchModerationSignals(rows.map((item) => item.id))
     setSignals(Object.fromEntries(signalRows.map((row) => [row.item_id, row])))
@@ -64,12 +73,14 @@ export const AdminPage = () => {
 
   const loadAudit = async (nextOffset: number = auditOffset) => {
     setAuditEvents(await fetchAuditEvents({
-      limit: 30,
+      limit: auditLimit,
       offset: nextOffset,
       event_type: auditType || undefined,
       actor_telegram_user_id: auditActor ? Number(auditActor) : undefined,
       item_id: auditItem ? Number(auditItem) : undefined,
       claim_id: auditClaim ? Number(auditClaim) : undefined,
+      created_from: auditCreatedFrom || undefined,
+      created_to: auditCreatedTo || undefined,
     }))
   }
 
@@ -86,10 +97,13 @@ export const AdminPage = () => {
         if (me.admin_access) {
           await Promise.all([loadItems(), loadAudit(0), fetchModerationStats().then(setStats)])
         }
-      } catch { setError('Could not verify admin access.') }
-      finally { setAuthLoading(false) }
+      } catch {
+        setError('Could not verify admin access.')
+      } finally {
+        setAuthLoading(false)
+      }
     }
-    load()
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -103,6 +117,27 @@ export const AdminPage = () => {
     }
   }
 
+  const applyPreset = async (preset: QueuePreset) => {
+    if (preset === 'flagged') {
+      setModerationFilter('flagged'); setSortBy('moderated_at'); setSortOrder('desc')
+    } else if (preset === 'pending') {
+      setModerationFilter('pending'); setSortBy('created_at'); setSortOrder('desc')
+    } else if (preset === 'recent') {
+      setModerationFilter('all'); setSortBy('updated_at'); setSortOrder('desc')
+    } else {
+      setModerationFilter('flagged'); setSortBy('moderated_at'); setSortOrder('desc')
+    }
+    setLifecycleFilter('active')
+    setStatusFilter('all')
+    setVerifiedFilter('all')
+    setActorFilter('')
+    setCategoryFilter('')
+    setQuery('')
+    setCreatedFrom('')
+    setCreatedTo('')
+    setTimeout(() => void loadItems(), 0)
+  }
+
   const summary = useMemo(() => ({
     pending: items.filter((item) => item.moderation_status === 'pending').length,
     flagged: items.filter((item) => item.moderation_status === 'flagged').length,
@@ -110,7 +145,9 @@ export const AdminPage = () => {
     rejected: items.filter((item) => item.moderation_status === 'rejected').length,
   }), [items])
 
-  const flaggedQueue = items.filter((item) => item.moderation_status === 'flagged').sort((a, b) => (signals[b.id]?.recent_flags_24h ?? 0) - (signals[a.id]?.recent_flags_24h ?? 0))
+  const flaggedQueue = items
+    .filter((item) => item.moderation_status === 'flagged')
+    .sort((a, b) => ((signals[b.id]?.recent_flags_24h ?? 0) + (signals[b.id]?.blocked_events_24h ?? 0)) - ((signals[a.id]?.recent_flags_24h ?? 0) + (signals[a.id]?.blocked_events_24h ?? 0)))
   const pendingQueue = items.filter((item) => item.moderation_status === 'pending')
 
   return (
@@ -123,6 +160,7 @@ export const AdminPage = () => {
           { label: 'Flagged', value: stats?.flagged ?? summary.flagged },
           { label: 'Active', value: stats?.active ?? 0 },
           { label: 'Open claims', value: stats?.unresolved_claims ?? 0 },
+          { label: 'Abuse blocks 24h', value: stats?.recent_abuse_blocks_24h ?? 0 },
         ]}
       />
 
@@ -140,7 +178,16 @@ export const AdminPage = () => {
 
       {!authLoading && linked && isAdmin ? (
         <>
-          <SectionCard title="Queue filters" subtitle={`Role: ${role || 'none'}. Tune by verification, actor, and sort order.`}>
+          <SectionCard title="Quick moderation queues" subtitle={`Role: ${role || 'none'}. Use presets for fast triage.`}>
+            <div className="quick-actions">
+              <button onClick={() => void applyPreset('flagged')}>Flagged priority</button>
+              <button className="button-neutral" onClick={() => void applyPreset('pending')}>Pending intake</button>
+              <button className="button-neutral" onClick={() => void applyPreset('recent')}>Recent activity</button>
+              <button className="button-ghost" onClick={() => void applyPreset('suspicious')}>Suspicious only</button>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Queue filters" subtitle="Filter by moderation, lifecycle, actor, verification, and date range.">
             <form className="filters" onSubmit={(e) => { e.preventDefault(); void loadItems() }}>
               <label>Moderation<select value={moderationFilter} onChange={(e) => setModerationFilter(e.target.value)}><option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="flagged">Flagged</option></select></label>
               <label>Lifecycle<select value={lifecycleFilter} onChange={(e) => setLifecycleFilter(e.target.value)}><option value="all">All</option><option value="active">Active</option><option value="resolved">Resolved</option><option value="deleted">Deleted</option></select></label>
@@ -149,6 +196,8 @@ export const AdminPage = () => {
               <label>Category<input value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} placeholder="Exact category" /></label>
               <label>Actor ID<input value={actorFilter} onChange={(e) => setActorFilter(e.target.value)} placeholder="Owner Telegram ID" /></label>
               <label>Search<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Title/location/contact/user" /></label>
+              <label>Created from<input type="datetime-local" value={createdFrom} onChange={(e) => setCreatedFrom(e.target.value)} /></label>
+              <label>Created to<input type="datetime-local" value={createdTo} onChange={(e) => setCreatedTo(e.target.value)} /></label>
               <label>Sort<select value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="created_at">Created</option><option value="updated_at">Updated</option><option value="moderated_at">Moderated</option><option value="id">ID</option></select></label>
               <label>Order<select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}><option value="desc">Desc</option><option value="asc">Asc</option></select></label>
               <button type="submit">Load queue</button>
@@ -156,11 +205,12 @@ export const AdminPage = () => {
           </SectionCard>
 
           <div className="layout-split">
-            <SectionCard title="Flagged queue" subtitle="Prioritized by recent flag spikes.">
+            <SectionCard title="Flagged queue" subtitle="Prioritized by recent pressure + abuse blocks.">
               {flaggedQueue.length === 0 ? <p className="subtle">No flagged reports.</p> : flaggedQueue.map((item) => {
                 const signal = signals[item.id]
                 return <article className="card stack" key={item.id}><strong>#{item.id} {item.title}</strong>
-                  <p className="subtle">flags: {signal?.total_flags ?? 0} total · {signal?.recent_flags_24h ?? 0} in 24h · claims: {signal?.claim_count ?? 0}</p>
+                  <p className="subtle">flags: {signal?.total_flags ?? 0} total · {signal?.recent_flags_24h ?? 0} in 24h · duplicate attempts: {signal?.duplicate_flags_24h ?? 0}</p>
+                  <p className="subtle">claims: {signal?.claim_count ?? 0} · blocked events 24h: {signal?.blocked_events_24h ?? 0}</p>
                   <p className="subtle">markers: {(signal?.suspicion_markers?.join(', ') || 'none')}</p>
                   <div className="actions-row"><button onClick={() => run(() => moderateItem(item.id, 'approve'))}>Approve</button><button className="button-neutral" onClick={() => run(() => moderateItem(item.id, 'reject', 'Rejected by admin'))}>Reject</button><button className="button-neutral" onClick={() => run(() => moderateItem(item.id, 'unflag'))}>Unflag</button></div>
                 </article>
@@ -178,15 +228,15 @@ export const AdminPage = () => {
             </SectionCard>
           </div>
 
-          <SectionCard title="All filtered reports" subtitle="Full moderation workspace with action groups.">
+          <SectionCard title="All filtered reports" subtitle="Full moderation workspace with grouped actions and trust indicators.">
             {items.length === 0 ? <EmptyState title="No reports in this queue" subtitle="Adjust filters to widen scope." /> : (
               <div className="grid">{items.map((item) => {
                 const signal = signals[item.id]
                 return <article key={item.id} className="card stack">
                   <h3>#{item.id} {item.title}</h3>
                   <p className="subtle">{item.category} · {item.location} · @{item.owner_telegram_username || item.telegram_username || 'n/a'}</p>
-                  <p className="subtle">flags {signal?.total_flags ?? 0} · claims {signal?.claim_count ?? 0} · recent flags {signal?.recent_flags_24h ?? 0}</p>
-                  <div className="status-row"><span className={`badge ${item.status}`}>{item.status}</span><span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span><span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span></div>
+                  <p className="subtle">flags {signal?.total_flags ?? 0} · recent {signal?.recent_flags_24h ?? 0} · duplicate flags {signal?.duplicate_flags_24h ?? 0} · claim pressure {signal?.recent_claims_24h ?? 0}</p>
+                  <div className="status-row"><span className={`badge ${item.status}`}>{item.status}</span><span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span><span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>{signal?.suspicion_markers?.length ? <span className="badge flagged">risk</span> : null}</div>
                   <div className="actions-row">
                     <button onClick={() => run(() => moderateItem(item.id, 'approve'))}>Approve</button>
                     <button className="button-neutral" onClick={() => run(() => moderateItem(item.id, 'reject', 'Rejected by admin'))}>Reject</button>
@@ -203,26 +253,33 @@ export const AdminPage = () => {
             )}
           </SectionCard>
 
-          <SectionCard title="Recent audit events" subtitle="Filter by actor/item/claim and paginate quickly.">
+          <SectionCard title="Recent audit events" subtitle="Readable audit feed with actor/item/claim/date filters.">
             <form className="filters" onSubmit={(e) => { e.preventDefault(); setAuditOffset(0); void loadAudit(0) }}>
               <label>Event type<input value={auditType} onChange={(e) => setAuditType(e.target.value)} placeholder="item_moderated" /></label>
               <label>Actor<input value={auditActor} onChange={(e) => setAuditActor(e.target.value)} placeholder="Telegram ID" /></label>
               <label>Item<input value={auditItem} onChange={(e) => setAuditItem(e.target.value)} placeholder="Item ID" /></label>
               <label>Claim<input value={auditClaim} onChange={(e) => setAuditClaim(e.target.value)} placeholder="Claim ID" /></label>
+              <label>From<input type="datetime-local" value={auditCreatedFrom} onChange={(e) => setAuditCreatedFrom(e.target.value)} /></label>
+              <label>To<input type="datetime-local" value={auditCreatedTo} onChange={(e) => setAuditCreatedTo(e.target.value)} /></label>
+              <label>Limit<select value={auditLimit} onChange={(e) => setAuditLimit(Number(e.target.value))}><option value={20}>20</option><option value={30}>30</option><option value={50}>50</option></select></label>
               <button type="submit">Apply filters</button>
             </form>
             <div className="actions-row">
-              <button className="button-neutral" onClick={() => { const next = Math.max(0, auditOffset - 30); setAuditOffset(next); void loadAudit(next) }}>Prev</button>
-              <button className="button-neutral" onClick={() => { const next = auditOffset + 30; setAuditOffset(next); void loadAudit(next) }}>Next</button>
+              <button className="button-neutral" onClick={() => { const next = Math.max(0, auditOffset - auditLimit); setAuditOffset(next); void loadAudit(next) }}>Prev</button>
+              <button className="button-neutral" onClick={() => { const next = auditOffset + auditLimit; setAuditOffset(next); void loadAudit(next) }}>Next</button>
               <p className="subtle">Offset: {auditOffset}</p>
             </div>
             {auditEvents.length === 0 ? <p className="subtle">No events found.</p> : (
-              <div className="stack">
+              <div className="timeline-list">
                 {auditEvents.map((event) => (
-                  <article className="card stack" key={event.id}>
-                    <strong>{event.event_type}</strong>
+                  <article className="card timeline-item" key={event.id}>
+                    <strong>{event.summary || event.label || event.event_type}</strong>
                     <p className="subtle">actor: {event.actor_telegram_user_id ?? 'n/a'} · item: {event.item_id ?? 'n/a'} · claim: {event.claim_id ?? 'n/a'}</p>
                     <p className="subtle">{new Date(event.created_at).toLocaleString()}</p>
+                    <div className="actions-row">
+                      {event.item_id ? <button className="button-neutral" onClick={() => { setAuditItem(String(event.item_id)); setAuditOffset(0); void loadAudit(0) }}>Filter item #{event.item_id}</button> : null}
+                      {event.claim_id ? <button className="button-neutral" onClick={() => { setAuditClaim(String(event.claim_id)); setAuditOffset(0); void loadAudit(0) }}>Filter claim #{event.claim_id}</button> : null}
+                    </div>
                     {event.details ? <pre className="subtle">{JSON.stringify(event.details, null, 2)}</pre> : null}
                   </article>
                 ))}
