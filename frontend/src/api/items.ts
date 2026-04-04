@@ -118,6 +118,8 @@ export type AdminObservability = {
       last_success_at?: string | null
       last_error_at?: string | null
       last_error?: string | null
+      health?: 'healthy' | 'warning' | 'stale' | 'unknown'
+      stale_seconds?: number | null
       last_removed_count?: number
       total_removed?: number
       runs?: number
