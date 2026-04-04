@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, UploadFile, status
 from sqlalchemy import func, select
@@ -59,6 +60,7 @@ from app.services.item_service import ItemService
 from app.services.matching import semantic_runtime_status
 
 router = APIRouter(prefix="/api/items", tags=["items"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=ItemRead, status_code=status.HTTP_201_CREATED)
@@ -159,6 +161,7 @@ def list_items_admin(
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0, le=2000),
+    suspicious_only: bool = Query(default=False),
     q: str | None = Query(default=None),
     _: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
@@ -178,6 +181,7 @@ def list_items_admin(
         sort_order=sort_order,
         limit=limit,
         offset=offset,
+        suspicious_only=suspicious_only,
     )
 
 
@@ -382,6 +386,11 @@ def _run_bulk_action(
             results.append(ItemBulkActionResult(item_id=item_id, success=True))
         except HTTPException as exc:
             results.append(ItemBulkActionResult(item_id=item_id, success=False, detail=str(exc.detail)))
+            db.rollback()
+        except Exception:
+            db.rollback()
+            logger.exception("Unexpected bulk action error for item_id=%s action=%s", item_id, action)
+            results.append(ItemBulkActionResult(item_id=item_id, success=False, detail="Unexpected server error"))
     succeeded = sum(1 for row in results if row.success)
     return ItemBulkActionResponse(
         action=action,
@@ -894,6 +903,9 @@ def admin_observability(
         cleanup={
             "anti_abuse_retention_days": get_settings().anti_abuse_event_retention_days,
             "audit_retention_days": get_settings().audit_event_retention_days,
+            "media_temp_interval_minutes": get_settings().media_cleanup_interval_minutes,
+            "media_orphan_interval_minutes": get_settings().media_orphan_cleanup_interval_minutes,
+            "event_retention_interval_minutes": get_settings().event_retention_cleanup_interval_minutes,
         },
         semantic_runtime={"state": semantic.state.value, "detail": semantic.detail},
     )

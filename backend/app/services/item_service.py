@@ -1,13 +1,15 @@
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
 
 from app.models.item import Item, ItemLifecycle, ItemStatus, ModerationStatus
 from app.models.claim import Claim, ClaimStatus
+from app.models.audit_event import AuditEvent
+from app.models.anti_abuse_event import AntiAbuseEvent
 from app.schemas.item import InternalMatchResult, ItemCreate, MatchResult
 from app.core.config import get_settings
 from app.services.matching import score_match_detailed
@@ -146,6 +148,7 @@ class ItemService:
         sort_order: str = "desc",
         limit: int = 200,
         offset: int = 0,
+        suspicious_only: bool = False,
     ) -> list[Item]:
         query: Select[tuple[Item]] = select(Item)
         if lifecycle:
@@ -177,6 +180,52 @@ class ItemService:
                 | Item.owner_telegram_username.ilike(like_q)
                 | Item.telegram_username.ilike(like_q)
             )
+        if suspicious_only:
+            since_24h = datetime.now(UTC) - timedelta(hours=24)
+            flag_spike = (
+                select(func.count(AuditEvent.id))
+                .where(
+                    AuditEvent.event_type == "item_flagged",
+                    AuditEvent.item_id == Item.id,
+                    AuditEvent.created_at >= since_24h,
+                )
+                .scalar_subquery()
+            )
+            duplicate_pressure = (
+                select(func.count(AntiAbuseEvent.id))
+                .where(
+                    AntiAbuseEvent.action == AbuseAction.FLAG_DUPLICATE.value,
+                    AntiAbuseEvent.item_id == Item.id,
+                    AntiAbuseEvent.created_at >= since_24h,
+                )
+                .scalar_subquery()
+            )
+            blocked_pressure = (
+                select(func.count(AntiAbuseEvent.id))
+                .where(
+                    AntiAbuseEvent.item_id == Item.id,
+                    AntiAbuseEvent.blocked.is_(True),
+                    AntiAbuseEvent.created_at >= since_24h,
+                )
+                .scalar_subquery()
+            )
+            claim_spike = (
+                select(func.count(Claim.id))
+                .where(
+                    or_(Claim.source_item_id == Item.id, Claim.target_item_id == Item.id),
+                    Claim.created_at >= since_24h,
+                )
+                .scalar_subquery()
+            )
+            query = query.where(
+                or_(
+                    Item.moderation_status == ModerationStatus.FLAGGED,
+                    flag_spike >= 3,
+                    duplicate_pressure >= 2,
+                    blocked_pressure >= 2,
+                    claim_spike >= 3,
+                )
+            )
 
         sort_fields = {
             "created_at": Item.created_at,
@@ -185,7 +234,9 @@ class ItemService:
             "id": Item.id,
         }
         col = sort_fields.get(sort_by, Item.created_at)
-        query = query.order_by(col.asc() if sort_order == "asc" else col.desc())
+        primary_sort = col.asc() if sort_order == "asc" else col.desc()
+        tie_breaker = Item.id.asc() if sort_order == "asc" else Item.id.desc()
+        query = query.order_by(primary_sort, tie_breaker)
         query = query.limit(limit).offset(offset)
         return list(self.db.scalars(query).all())
 

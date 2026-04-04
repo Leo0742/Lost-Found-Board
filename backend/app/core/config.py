@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     embedding_warmup_on_startup: bool = True
     media_tmp_ttl_hours: int = 24
     media_cleanup_interval_minutes: int = 60
+    media_orphan_cleanup_interval_minutes: int = 360
+    event_retention_cleanup_interval_minutes: int = 180
     media_root: str = "/app/media"
     media_url_prefix: str = "/media"
     media_max_bytes: int = 5 * 1024 * 1024

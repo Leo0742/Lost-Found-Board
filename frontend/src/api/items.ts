@@ -56,6 +56,7 @@ export type AdminItemsParams = {
   sort_order?: string
   limit?: number
   offset?: number
+  suspicious_only?: boolean
 }
 
 export type AuditEventsParams = {
