@@ -45,6 +45,31 @@ def create_web_session(db: Session) -> WebAuthSession:
     return session
 
 
+def rotate_web_session(
+    db: Session,
+    session: WebAuthSession,
+    *,
+    telegram_user_id: int | None,
+    telegram_username: str | None,
+    telegram_display_name: str | None,
+) -> WebAuthSession:
+    settings = get_settings()
+    replacement = WebAuthSession(
+        id=generate_session_id(),
+        csrf_token=generate_csrf_token(),
+        telegram_user_id=telegram_user_id,
+        telegram_username=telegram_username,
+        telegram_display_name=telegram_display_name,
+        linked_at=_now() if telegram_user_id else None,
+        expires_at=_now() + timedelta(days=settings.web_session_ttl_days),
+    )
+    db.add(replacement)
+    db.delete(session)
+    db.commit()
+    db.refresh(replacement)
+    return replacement
+
+
 def ensure_session_csrf_token(db: Session, session: WebAuthSession) -> str:
     if session.csrf_token:
         return session.csrf_token

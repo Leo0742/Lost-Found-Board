@@ -20,7 +20,7 @@ export const ItemDetailsPage = () => {
     getAuthMe().then(async (me) => {
       const telegramId = me.identity?.telegram_user_id ?? null
       setOwnerId(telegramId)
-      if (telegramId) setClaims(await listClaims(undefined, 'all') as Claim[])
+      if (telegramId) setClaims(await listClaims('all') as Claim[])
     })
   }, [id])
 
@@ -72,7 +72,7 @@ export const ItemDetailsPage = () => {
                     <span className={`badge ${match.confidence === 'high' ? 'approved' : 'pending'}`}>{match.confidence}</span>
                   </div>
                   <p className="subtle">{match.reasons.join(', ')}</p>
-                  {ownerId ? <button type="button" onClick={async () => { await createClaim(item.id, match.id); setClaims(await listClaims(undefined, 'all') as Claim[]) }}>Start claim handoff</button> : null}
+                  {ownerId ? <button type="button" onClick={async () => { await createClaim(item.id, match.id); setClaims(await listClaims('all') as Claim[]) }}>Start claim handoff</button> : null}
                 </article>
               ))}
             </div>
@@ -87,8 +87,8 @@ export const ItemDetailsPage = () => {
                 <small className="subtle">#{claim.source_item_id} → #{claim.target_item_id}</small>
                 {claim.status === 'pending' && claim.owner_telegram_user_id === ownerId ? (
                   <div className="actions-row">
-                    <button type="button" onClick={async () => { await claimAction(claim.id, 'approve'); setClaims(await listClaims(undefined, 'all') as Claim[]) }}>Approve</button>
-                    <button className="button-neutral" type="button" onClick={async () => { await claimAction(claim.id, 'reject'); setClaims(await listClaims(undefined, 'all') as Claim[]) }}>Reject</button>
+                    <button type="button" onClick={async () => { await claimAction(claim.id, 'approve'); setClaims(await listClaims('all') as Claim[]) }}>Approve</button>
+                    <button className="button-neutral" type="button" onClick={async () => { await claimAction(claim.id, 'reject'); setClaims(await listClaims('all') as Claim[]) }}>Reject</button>
                   </div>
                 ) : null}
                 {claim.status === 'approved' ? <p className="notice">Shared contacts: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}</p> : null}

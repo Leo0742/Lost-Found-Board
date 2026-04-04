@@ -55,10 +55,10 @@ The codebase is intentionally modular for hackathon speed:
 - `GET /api/items/internal/mine/{telegram_user_id}` (internal bot-only, protected by `X-Internal-Token`)
 - `GET /api/items`
 - `GET /api/items/{id}`
-- `PATCH /api/items/{id}`
+- `PATCH /api/items/{id} (owner session only)`
 - `DELETE /api/items/{id}`
-- `POST /api/items/{id}/resolve`
-- `POST /api/items/{id}/reopen`
+- `POST /api/items/{id}/resolve (owner session only)`
+- `POST /api/items/{id}/reopen (owner session only)`
 - `POST /api/items/{id}/delete` (soft delete)
 - `POST /api/items/upload-image` (multipart image upload; requires linked web session or internal bot token)
 - `GET /api/items/search?q=...`
@@ -67,15 +67,21 @@ The codebase is intentionally modular for hackathon speed:
 - `GET /api/items/category-suggest?title=...` (category inference by title)
 - `GET /api/items/matches/{id}` (public-safe response, no owner identifiers)
 - `GET /api/items/internal/matches/{id}` (internal bot-only, includes owner ids for notifications)
+
+- `PATCH /api/items/admin/items/{id}` (admin/moderator scoped patch)
+- `POST /api/items/internal/{id}/resolve|reopen|delete` (internal bot-only + token)
+- `POST /api/items/internal/claim-requests` (internal bot-only + token)
+- `GET /api/items/internal/claim-requests?telegram_user_id=...` (internal bot-only + token)
+- `POST /api/items/internal/claim-requests/{id}/{action}` (internal bot-only + token)
 - `GET /api/items/admin/items` (requires Telegram-linked admin/moderator session)
 - `POST /api/items/admin/items/{id}/moderate` (approve/reject/flag/unflag)
 - `POST /api/items/admin/items/{id}/verify`
 - `POST /api/items/admin/items/{id}/lifecycle` (resolve/reopen/delete)
 - `POST /api/items/{id}/flag` (public abuse report)
-- `POST /api/items/claim-requests`
-- `GET /api/items/claim-requests?telegram_user_id=...`
+- `POST /api/items/claim-requests (session owner only)`
+- `GET /api/items/claim-requests`
   - Optional `direction`: `all` (default), `incoming`, `outgoing`
-- `POST /api/items/claim-requests/{id}/approve|reject|cancel|complete|not-match`
+- `POST /api/items/claim-requests/{id}/approve|reject|cancel|complete|not-match` (session participant only)
 - OpenAPI docs at `/docs`.
 - Auth/session endpoints:
   - `POST /api/auth/session`
@@ -198,7 +204,7 @@ If the bot profile is enabled without a valid token, the bot container exits imm
   - `deleted` (soft delete)
 - Matching/search defaults to active reports.
 - Resolved/deleted reports are excluded from normal match candidate pools.
-- Ownership-sensitive actions (`resolve/reopen/delete`) are server-authorized using linked Telegram identity (web session) or bot Telegram id.
+- Ownership-sensitive web actions (`resolve/reopen/delete`) are authorized only by linked Telegram web session identity. Bot actions use dedicated `/api/items/internal/...` token-protected endpoints.
 - Raw `DELETE /api/items/{id}` is admin-only (Telegram-linked role check) and should be treated as moderation-only.
 
 ## Moderation & Trust/Safety
@@ -448,3 +454,10 @@ Expected behavior:
 - Fuzzy matching tolerates wording differences.
 - Embedding similarity catches contextual equivalence.
 - Match is returned with medium/high confidence and explanation reasons.
+
+
+## Internal token safety
+
+- `INTERNAL_API_TOKEN` must be set to a non-default value outside `APP_ENV=dev/test/local`.
+- With `STRICT_INTERNAL_TOKEN=true` (default), backend startup and `/ready` fail in non-dev environments when token is missing/default.
+- Local development remains workable with default token.

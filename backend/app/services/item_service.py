@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile
 
 from app.models.item import Item, ItemLifecycle, ItemStatus, ModerationStatus
 from app.models.claim import Claim, ClaimStatus
-from app.schemas.item import InternalMatchResult, ItemCreate, ItemUpdate, MatchResult
+from app.schemas.item import InternalMatchResult, ItemCreate, MatchResult
 from app.core.config import get_settings
 from app.services.matching import score_match_detailed
 from app.services.catalog import CATEGORY_CATALOG, infer_category
@@ -158,8 +158,7 @@ class ItemService:
     def get_item(self, item_id: int) -> Item | None:
         return self.db.get(Item, item_id)
 
-    def update_item(self, item: Item, payload: ItemUpdate) -> Item:
-        data = payload.model_dump(exclude_unset=True)
+    def update_item(self, item: Item, data: dict, *, actor_telegram_user_id: int | None = None) -> Item:
         old_image = item.image_path
         cleanup_path = data.get("image_path") if is_tmp_path(data.get("image_path")) else None
         try:
@@ -172,7 +171,13 @@ class ItemService:
             self.db.refresh(item)
             if old_image and old_image != item.image_path and is_tmp_path(old_image):
                 remove_media_file(old_image)
-            log_event(self.db, "item_updated", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"fields": sorted(data.keys())})
+            log_event(
+                self.db,
+                "item_updated",
+                actor_telegram_user_id=actor_telegram_user_id or item.owner_telegram_user_id or item.telegram_user_id,
+                item_id=item.id,
+                details={"fields": sorted(data.keys())},
+            )
             self.db.commit()
             return item
         except Exception:

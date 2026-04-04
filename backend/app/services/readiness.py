@@ -29,7 +29,8 @@ def check_readiness(db: Session) -> ReadinessReport:
     services_initialized = bool(settings.app_name and settings.media_root)
     matching = semantic_runtime_status()
     media_ok = media_storage_ready()
-    config_ok = bool(settings.internal_api_token and settings.database_url and settings.media_url_prefix)
+    internal_token_ok = settings.has_secure_internal_token or settings.is_dev_env or not settings.strict_internal_token
+    config_ok = bool(settings.database_url and settings.media_url_prefix and internal_token_ok)
 
     fatal = [not db_ok, not services_initialized, not media_ok, not config_ok]
     if settings.semantic_strict_mode and matching.state != SemanticState.ENABLED:

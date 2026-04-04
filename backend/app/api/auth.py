@@ -11,6 +11,7 @@ from app.core.auth import (
     get_admin_role_for_identity,
     get_admin_role_for_session,
     get_session_from_cookie,
+    rotate_web_session,
     require_csrf_for_session,
 )
 from app.core.config import get_settings
@@ -124,34 +125,33 @@ def create_link_code(
 
 
 @router.post("/link/confirm", response_model=WhoAmIResponse)
-def confirm_link(payload: LinkConfirmRequest, db: Session = Depends(get_db)) -> WhoAmIResponse:
+def confirm_link(payload: LinkConfirmRequest, response: Response, db: Session = Depends(get_db)) -> WhoAmIResponse:
     session = db.scalar(select(WebAuthSession).where(WebAuthSession.link_code == payload.code.upper()))
     if not session or not session.link_code_expires_at or _as_utc(session.link_code_expires_at) < _now():
         raise HTTPException(status_code=404, detail="Link code is invalid or expired")
 
-    session.telegram_user_id = payload.telegram_user_id
-    session.telegram_username = payload.telegram_username
-    session.telegram_display_name = payload.display_name
-    session.linked_at = _now()
-    session.link_code = None
-    session.link_code_expires_at = None
-    db.add(session)
-    db.commit()
-    db.refresh(session)
+    linked_session = rotate_web_session(
+        db,
+        session,
+        telegram_user_id=payload.telegram_user_id,
+        telegram_username=payload.telegram_username,
+        telegram_display_name=payload.display_name,
+    )
+    _set_session_cookie(response, linked_session.id)
     log_event(
         db,
         "telegram_linked",
-        actor_telegram_user_id=session.telegram_user_id,
-        details={"telegram_username": session.telegram_username},
+        actor_telegram_user_id=linked_session.telegram_user_id,
+        details={"telegram_username": linked_session.telegram_username},
     )
     db.commit()
-    role = get_admin_role_for_session(session)
+    role = get_admin_role_for_session(linked_session)
     return WhoAmIResponse(
         linked=True,
         identity=TelegramIdentity(
-            telegram_user_id=session.telegram_user_id,
-            telegram_username=session.telegram_username,
-            display_name=session.telegram_display_name,
+            telegram_user_id=linked_session.telegram_user_id,
+            telegram_username=linked_session.telegram_username,
+            display_name=linked_session.telegram_display_name,
         ),
         admin_access=bool(role),
         role=role.value if role else None,
@@ -166,17 +166,21 @@ def logout(
     db: Session = Depends(get_db),
 ) -> None:
     if session:
-        session.telegram_user_id = None
-        session.telegram_username = None
-        session.telegram_display_name = None
-        session.linked_at = None
-        db.add(session)
-        db.commit()
+        rotated = rotate_web_session(
+            db,
+            session,
+            telegram_user_id=None,
+            telegram_username=None,
+            telegram_display_name=None,
+        )
+        _set_session_cookie(response, rotated.id)
+        return
     response.delete_cookie("lfb_session")
 
 
 @router.post("/unlink", status_code=status.HTTP_204_NO_CONTENT)
 def unlink_telegram(
+    response: Response,
     _: None = Depends(require_csrf_for_session),
     session: WebAuthSession | None = Depends(get_session_from_cookie),
     db: Session = Depends(get_db),
@@ -184,14 +188,14 @@ def unlink_telegram(
     if not session:
         return
     actor_id = session.telegram_user_id
-    session.telegram_user_id = None
-    session.telegram_username = None
-    session.telegram_display_name = None
-    session.linked_at = None
-    session.link_code = None
-    session.link_code_expires_at = None
-    db.add(session)
-    db.commit()
+    rotated = rotate_web_session(
+        db,
+        session,
+        telegram_user_id=None,
+        telegram_username=None,
+        telegram_display_name=None,
+    )
+    _set_session_cookie(response, rotated.id)
     log_event(db, "telegram_unlinked", actor_telegram_user_id=actor_id)
     db.commit()
 

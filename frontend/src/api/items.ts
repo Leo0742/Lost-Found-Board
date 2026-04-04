@@ -98,20 +98,18 @@ export const uploadItemImage = async (file: File) => {
   return response.data
 }
 
-const ownerPayload = (telegramUserId?: number) => (telegramUserId ? { telegram_user_id: telegramUserId } : {})
-
-export const resolveItem = async (itemId: number, telegramUserId?: number) => {
-  const response = await apiClient.post<Item>(`/items/${itemId}/resolve`, ownerPayload(telegramUserId))
+export const resolveItem = async (itemId: number) => {
+  const response = await apiClient.post<Item>(`/items/${itemId}/resolve`, {})
   return response.data
 }
 
-export const reopenItem = async (itemId: number, telegramUserId?: number) => {
-  const response = await apiClient.post<Item>(`/items/${itemId}/reopen`, ownerPayload(telegramUserId))
+export const reopenItem = async (itemId: number) => {
+  const response = await apiClient.post<Item>(`/items/${itemId}/reopen`, {})
   return response.data
 }
 
-export const softDeleteItem = async (itemId: number, telegramUserId?: number) => {
-  const response = await apiClient.post<Item>(`/items/${itemId}/delete`, ownerPayload(telegramUserId))
+export const softDeleteItem = async (itemId: number) => {
+  const response = await apiClient.post<Item>(`/items/${itemId}/delete`, {})
   return response.data
 }
 
@@ -152,22 +150,22 @@ export const fetchAuditEvents = async (params: { event_type?: string; actor_tele
   return response.data
 }
 
-export const createClaim = async (source_item_id: number, target_item_id: number, requester_telegram_user_id?: number, claim_message?: string) => {
-  const response = await apiClient.post('/items/claim-requests', { source_item_id, target_item_id, requester_telegram_user_id, claim_message })
+export const createClaim = async (source_item_id: number, target_item_id: number, claim_message?: string) => {
+  const response = await apiClient.post('/items/claim-requests', { source_item_id, target_item_id, claim_message })
   invalidateCache('claims:')
   return response.data
 }
 
-export const listClaims = async (telegram_user_id?: number, direction: 'all' | 'incoming' | 'outgoing' = 'all') => {
-  const key = `claims:${direction}:${telegram_user_id ?? 'session'}`
+export const listClaims = async (direction: 'all' | 'incoming' | 'outgoing' = 'all') => {
+  const key = `claims:${direction}:session`
   return cachedCall(key, 7_500, async () => {
-    const response = await apiClient.get('/items/claim-requests', { params: { telegram_user_id, direction } })
+    const response = await apiClient.get('/items/claim-requests', { params: { direction } })
     return response.data
   })
 }
 
-export const claimAction = async (claimId: number, action: 'approve' | 'reject' | 'cancel' | 'complete' | 'not-match', telegram_user_id?: number, note?: string) => {
-  const response = await apiClient.post(`/items/claim-requests/${claimId}/${action}`, { telegram_user_id, note })
+export const claimAction = async (claimId: number, action: 'approve' | 'reject' | 'cancel' | 'complete' | 'not-match', note?: string) => {
+  const response = await apiClient.post(`/items/claim-requests/${claimId}/${action}`, { note })
   invalidateCache('claims:')
   return response.data
 }

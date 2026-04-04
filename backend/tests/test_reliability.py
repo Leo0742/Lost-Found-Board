@@ -35,8 +35,9 @@ def test_audit_events_created_for_item_and_claim(client, db_session_factory):
     target = _create_item(client, title="Found keys", status="found", telegram_user_id=200)
 
     claim = client.post(
-        "/api/items/claim-requests",
+        "/api/items/internal/claim-requests",
         json={"source_item_id": source["id"], "target_item_id": target["id"], "requester_telegram_user_id": 100},
+        headers={"X-Internal-Token": "change-me-internal-token"},
     )
     assert claim.status_code == 200
 

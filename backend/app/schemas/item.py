@@ -27,16 +27,21 @@ class ItemCreate(ItemBase):
     pass
 
 
-class ItemUpdate(BaseModel):
+class ItemOwnerUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=3, max_length=120)
     description: str | None = Field(default=None, min_length=5, max_length=2000)
     category: str | None = Field(default=None, min_length=2, max_length=60)
     location: str | None = Field(default=None, min_length=2, max_length=120)
-    status: ItemStatus | None = None
     contact_name: str | None = Field(default=None, min_length=2, max_length=80)
     telegram_username: str | None = Field(default=None, max_length=80)
-    telegram_user_id: int | None = None
+
+
+class ItemAdminUpdate(ItemOwnerUpdate):
+    status: ItemStatus | None = None
     lifecycle: ItemLifecycle | None = None
+    moderation_status: ModerationStatus | None = None
+    moderation_reason: str | None = Field(default=None, max_length=255)
+    is_verified: bool | None = None
 
 
 class ItemPublicRead(BaseModel):
@@ -133,9 +138,12 @@ class ItemFlagRequest(BaseModel):
 class ClaimCreate(BaseModel):
     source_item_id: int
     target_item_id: int
-    requester_telegram_user_id: int | None = None
     requester_name: str | None = Field(default=None, max_length=120)
     claim_message: str | None = Field(default=None, max_length=1000)
+
+
+class InternalClaimCreate(ClaimCreate):
+    requester_telegram_user_id: int
 
 
 class ClaimRead(BaseModel):
@@ -158,8 +166,11 @@ class ClaimRead(BaseModel):
 
 
 class ClaimAction(BaseModel):
-    telegram_user_id: int | None = None
     note: str | None = Field(default=None, max_length=255)
+
+
+class InternalClaimAction(ClaimAction):
+    telegram_user_id: int
 
 
 class AuditEventRead(BaseModel):

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     web_session_cookie_secure: bool = False
     web_session_cookie_samesite: str = "lax"
     internal_api_token: str = "change-me-internal-token"
+    strict_internal_token: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -68,6 +69,17 @@ class Settings(BaseSettings):
                 "http://127.0.0.1:5173",
             ]
         return []
+
+    @property
+    def is_dev_env(self) -> bool:
+        return self.app_env.lower() in {"dev", "development", "local", "test"}
+
+    @property
+    def has_secure_internal_token(self) -> bool:
+        token = (self.internal_api_token or "").strip()
+        if not token:
+            return False
+        return token != "change-me-internal-token"
 
 
 @lru_cache

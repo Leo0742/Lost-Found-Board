@@ -83,8 +83,9 @@ class BackendClient:
     async def resolve_item(self, item_id: int, telegram_user_id: int) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
-                f"{self.base_url}/items/{item_id}/resolve",
+                f"{self.base_url}/items/internal/{item_id}/resolve",
                 json={"telegram_user_id": telegram_user_id},
+                headers=self._internal_headers,
             )
             response.raise_for_status()
             return response.json()
@@ -92,8 +93,9 @@ class BackendClient:
     async def reopen_item(self, item_id: int, telegram_user_id: int) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
-                f"{self.base_url}/items/{item_id}/reopen",
+                f"{self.base_url}/items/internal/{item_id}/reopen",
                 json={"telegram_user_id": telegram_user_id},
+                headers=self._internal_headers,
             )
             response.raise_for_status()
             return response.json()
@@ -101,8 +103,9 @@ class BackendClient:
     async def delete_item(self, item_id: int, telegram_user_id: int) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
-                f"{self.base_url}/items/{item_id}/delete",
+                f"{self.base_url}/items/internal/{item_id}/delete",
                 json={"telegram_user_id": telegram_user_id},
+                headers=self._internal_headers,
             )
             response.raise_for_status()
             return response.json()
@@ -116,13 +119,14 @@ class BackendClient:
     async def create_claim(self, source_item_id: int, target_item_id: int, requester_telegram_user_id: int, claim_message: str = "") -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
-                f"{self.base_url}/items/claim-requests",
+                f"{self.base_url}/items/internal/claim-requests",
                 json={
                     "source_item_id": source_item_id,
                     "target_item_id": target_item_id,
                     "requester_telegram_user_id": requester_telegram_user_id,
                     "claim_message": claim_message or None,
                 },
+                headers=self._internal_headers,
             )
             response.raise_for_status()
             return response.json()
@@ -130,8 +134,9 @@ class BackendClient:
     async def list_claims(self, telegram_user_id: int, direction: str = "all") -> list[dict]:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.get(
-                f"{self.base_url}/items/claim-requests",
+                f"{self.base_url}/items/internal/claim-requests",
                 params={"telegram_user_id": telegram_user_id, "direction": direction},
+                headers=self._internal_headers,
             )
             response.raise_for_status()
             return response.json()
@@ -139,8 +144,9 @@ class BackendClient:
     async def claim_action(self, claim_id: int, action: str, telegram_user_id: int, note: str = "") -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
-                f"{self.base_url}/items/claim-requests/{claim_id}/{action}",
+                f"{self.base_url}/items/internal/claim-requests/{claim_id}/{action}",
                 json={"telegram_user_id": telegram_user_id, "note": note or None},
+                headers=self._internal_headers,
             )
             response.raise_for_status()
             return response.json()
