@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, UploadFile, status
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, UploadFile, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -12,8 +15,12 @@ from app.core.auth import (
     require_internal_access,
 )
 from app.models.auth_session import WebAuthSession
+from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.item import ItemLifecycle, ItemStatus, ModerationStatus
+from app.models.anti_abuse_event import AntiAbuseEvent
+from app.models.audit_event import AuditEvent
+from app.models.claim import Claim, ClaimStatus
+from app.models.item import Item, ItemLifecycle, ItemStatus, ModerationStatus
 from app.schemas.item import (
     ClaimAction,
     ClaimCreate,
@@ -35,11 +42,13 @@ from app.schemas.item import (
     ItemVerificationAction,
     InternalMatchResult,
     MatchResult,
+    ModerationSignalRead,
+    ModerationStatsRead,
     SmartSearchResultRead,
 )
-from app.services.item_service import ItemService
-from app.models.claim import ClaimStatus
+from app.services.anti_abuse import RateLimitRule, client_ip_hash, enforce_rate_limit
 from app.services.audit import list_events
+from app.services.item_service import ItemService
 
 router = APIRouter(prefix="/api/items", tags=["items"])
 
@@ -49,8 +58,23 @@ def create_item(
     payload: ItemCreate,
     _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> ItemRead:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="create_item",
+        rule=RateLimitRule(
+            window_seconds=settings.create_rate_limit_window_minutes * 60,
+            max_hits=settings.create_rate_limit_max_items,
+            error_message="Too many new reports in a short period. Please try again later.",
+        ),
+        actor_telegram_user_id=auth_telegram_user_id,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+    )
     service = ItemService(db)
     if auth_telegram_user_id:
         payload.telegram_user_id = auth_telegram_user_id
@@ -67,15 +91,29 @@ def upload_item_image(
     image: UploadFile,
     _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    request: Request = None,
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
     db: Session = Depends(get_db),
 ) -> ImageUploadResult:
     if not auth_telegram_user_id:
-        from app.core.config import get_settings
-
         settings = get_settings()
         if not settings.internal_api_token or x_internal_token != settings.internal_api_token:
             raise HTTPException(status_code=401, detail="Connect Telegram first")
+    else:
+        settings = get_settings()
+        enforce_rate_limit(
+            db,
+            action="upload_image",
+            rule=RateLimitRule(
+                window_seconds=settings.upload_rate_limit_window_minutes * 60,
+                max_hits=settings.upload_rate_limit_max,
+                error_message="Too many image uploads. Please wait before uploading more files.",
+            ),
+            actor_telegram_user_id=auth_telegram_user_id,
+            session_id=session.id if session else None,
+            ip_hash=client_ip_hash(request),
+        )
     service = ItemService(db)
     image_path, image_filename, image_mime_type = service.save_image(image)
     image_url = service.image_url(image_path) or ""
@@ -104,31 +142,133 @@ def list_items_admin(
     status: ItemStatus | None = Query(default=None),
     lifecycle: ItemLifecycle | None = Query(default=None),
     moderation_status: ModerationStatus | None = Query(default=None),
+    category: str | None = Query(default=None),
+    is_verified: bool | None = Query(default=None),
+    actor_telegram_user_id: int | None = Query(default=None),
+    created_from: datetime | None = Query(default=None),
+    created_to: datetime | None = Query(default=None),
+    sort_by: str = Query(default="created_at", pattern="^(created_at|updated_at|moderated_at|id)$"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=2000),
     q: str | None = Query(default=None),
     _: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
 ) -> list[ItemRead]:
     service = ItemService(db)
-    return service.list_items(status=status, q=q, lifecycle=lifecycle, moderation_status=moderation_status)
+    return service.list_items_admin(
+        status=status,
+        q=q,
+        lifecycle=lifecycle,
+        moderation_status=moderation_status,
+        category=category,
+        is_verified=is_verified,
+        actor_telegram_user_id=actor_telegram_user_id,
+        created_from=created_from,
+        created_to=created_to,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/admin/audit-events", response_model=list[AuditEventRead])
 def list_audit_events(
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=5000),
     event_type: str | None = Query(default=None),
     actor_telegram_user_id: int | None = Query(default=None),
     item_id: int | None = Query(default=None),
     claim_id: int | None = Query(default=None),
+    created_from: datetime | None = Query(default=None),
+    created_to: datetime | None = Query(default=None),
     _: AdminRole = Depends(require_admin_or_moderator),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> list[AuditEventRead]:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="admin_audit_list",
+        rule=RateLimitRule(
+            window_seconds=settings.admin_audit_rate_limit_window_minutes * 60,
+            max_hits=settings.admin_audit_rate_limit_max,
+            error_message="Audit history is being queried too frequently. Please retry shortly.",
+        ),
+        actor_telegram_user_id=session.telegram_user_id if session else None,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+    )
     return list_events(
         db,
         limit=limit,
+        offset=offset,
         event_type=event_type,
         actor_telegram_user_id=actor_telegram_user_id,
         item_id=item_id,
         claim_id=claim_id,
+        created_from=created_from,
+        created_to=created_to,
+    )
+
+
+@router.get("/admin/moderation-signals", response_model=list[ModerationSignalRead])
+def moderation_signals(
+    item_ids: list[int] = Query(default=[]),
+    _: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> list[ModerationSignalRead]:
+    if not item_ids:
+        return []
+    now = datetime.now(UTC)
+    since_24h = now - timedelta(hours=24)
+    rows: list[ModerationSignalRead] = []
+    for item_id in item_ids[:200]:
+        total_flags = db.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id)) or 0
+        recent_flags = db.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id, AuditEvent.created_at >= since_24h)) or 0
+        claim_count = db.scalar(select(func.count(Claim.id)).where((Claim.source_item_id == item_id) | (Claim.target_item_id == item_id))) or 0
+        recent_claims = db.scalar(select(func.count(Claim.id)).where(((Claim.source_item_id == item_id) | (Claim.target_item_id == item_id)), Claim.created_at >= since_24h)) or 0
+        last_flag_at = db.scalar(
+            select(AuditEvent.created_at)
+            .where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id)
+            .order_by(AuditEvent.created_at.desc())
+            .limit(1)
+        )
+        markers: list[str] = []
+        if recent_flags >= 3:
+            markers.append("flag_spike_24h")
+        if total_flags >= 5:
+            markers.append("high_total_flags")
+        if recent_claims >= 3:
+            markers.append("claim_spike_24h")
+        rows.append(
+            ModerationSignalRead(
+                item_id=item_id,
+                total_flags=total_flags,
+                recent_flags_24h=recent_flags,
+                recent_claims_24h=recent_claims,
+                claim_count=claim_count,
+                last_flag_at=last_flag_at,
+                suspicion_markers=markers,
+            )
+        )
+    return rows
+
+
+@router.get("/admin/moderation-stats", response_model=ModerationStatsRead)
+def moderation_stats(
+    _: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> ModerationStatsRead:
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+    return ModerationStatsRead(
+        pending=db.scalar(select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.PENDING)) or 0,
+        flagged=db.scalar(select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.FLAGGED)) or 0,
+        active=db.scalar(select(func.count(Item.id)).where(Item.lifecycle == ItemLifecycle.ACTIVE)) or 0,
+        unresolved_claims=db.scalar(select(func.count(Claim.id)).where(Claim.status.in_([ClaimStatus.PENDING, ClaimStatus.APPROVED]))) or 0,
+        recent_abuse_blocks_24h=db.scalar(select(func.count(AntiAbuseEvent.id)).where(AntiAbuseEvent.blocked.is_(True), AntiAbuseEvent.created_at >= since_24h)) or 0,
     )
 
 
@@ -142,8 +282,24 @@ def search_items(q: str = Query(min_length=1), db: Session = Depends(get_db)) ->
 def smart_search_items(
     q: str = Query(min_length=1),
     limit: int = Query(default=8, ge=1, le=12),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> list[SmartSearchResultRead]:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="smart_search",
+        rule=RateLimitRule(
+            window_seconds=settings.smart_search_rate_limit_window_minutes * 60,
+            max_hits=settings.smart_search_rate_limit_max,
+            error_message="Search rate limit reached. Please wait before running more smart searches.",
+        ),
+        actor_telegram_user_id=auth_telegram_user_id,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+    )
     service = ItemService(db)
     return service.smart_search(query=q, limit=limit)
 
@@ -155,7 +311,26 @@ def get_categories(db: Session = Depends(get_db)) -> list[str]:
 
 
 @router.get("/category-suggest", response_model=CategorySuggestionRead)
-def suggest_category(title: str = Query(min_length=1), db: Session = Depends(get_db)) -> CategorySuggestionRead:
+def suggest_category(
+    title: str = Query(min_length=1),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    request: Request = None,
+    db: Session = Depends(get_db),
+) -> CategorySuggestionRead:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="category_suggest",
+        rule=RateLimitRule(
+            window_seconds=settings.category_suggest_rate_limit_window_minutes * 60,
+            max_hits=settings.category_suggest_rate_limit_max,
+            error_message="Category suggestions are temporarily rate limited. Please try again in a moment.",
+        ),
+        actor_telegram_user_id=auth_telegram_user_id,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+    )
     service = ItemService(db)
     return service.suggest_category(title)
 
@@ -186,8 +361,24 @@ def create_claim(
     payload: ClaimCreate,
     _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> ClaimRead:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="create_claim",
+        rule=RateLimitRule(
+            window_seconds=settings.claim_rate_limit_window_minutes * 60,
+            max_hits=settings.claim_rate_limit_max,
+            error_message="Too many claim attempts. Please wait and try again later.",
+        ),
+        actor_telegram_user_id=auth_telegram_user_id,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+        fingerprint=f"{payload.source_item_id}:{payload.target_item_id}",
+    )
     service = ItemService(db)
     source = service.get_item(payload.source_item_id)
     target = service.get_item(payload.target_item_id)
@@ -369,13 +560,36 @@ def flag_item(
     item_id: int,
     payload: ItemFlagRequest,
     _: None = Depends(require_csrf_for_session),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    request: Request = None,
     db: Session = Depends(get_db),
 ) -> ItemRead:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="flag_item",
+        rule=RateLimitRule(
+            window_seconds=settings.flag_rate_limit_window_minutes * 60,
+            max_hits=settings.flag_rate_limit_max,
+            error_message="Too many flag submissions. Please try again later.",
+        ),
+        actor_telegram_user_id=auth_telegram_user_id,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+        item_id=item_id,
+    )
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return service.flag_item(item, payload.reason)
+    return service.flag_item(
+        item,
+        payload.reason,
+        actor_telegram_user_id=auth_telegram_user_id,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+    )
 
 
 @router.post("/admin/items/{item_id}/moderate", response_model=ItemRead)

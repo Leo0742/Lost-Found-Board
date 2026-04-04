@@ -207,6 +207,28 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Ownership-sensitive web actions (`resolve/reopen/delete`) are authorized only by linked Telegram web session identity. Bot actions use dedicated `/api/items/internal/...` token-protected endpoints.
 - Raw `DELETE /api/items/{id}` is admin-only (Telegram-linked role check) and should be treated as moderation-only.
 
+## Abuse controls and moderation productivity (latest pass)
+
+- Added backend-enforced rate limiting for risky endpoints (`create item`, `upload image`, `link-code`, `link confirm`, `flag item`, `claim create`, `search-smart`, `category-suggest`, `admin audit list`) with clear `429` responses and action-specific messages.
+- Duplicate public flags are blocked per actor/session/IP + item + normalized reason in a 24h window.
+- Admin console now supports stronger queue filtering and sorting (moderation/lifecycle/status/verification/category/owner actor/query), abuse signals per item, and improved audit filters/pagination.
+- Added moderation visibility endpoints:
+  - `GET /api/items/admin/moderation-stats`
+  - `GET /api/items/admin/moderation-signals?item_ids=...`
+- Audit endpoint supports `offset`, `created_from`, `created_to` in addition to existing filters.
+
+### Rate limit env configuration
+
+- `CREATE_RATE_LIMIT_WINDOW_MINUTES`, `CREATE_RATE_LIMIT_MAX_ITEMS`
+- `UPLOAD_RATE_LIMIT_WINDOW_MINUTES`, `UPLOAD_RATE_LIMIT_MAX`
+- `LINK_CODE_RATE_LIMIT_WINDOW_MINUTES`, `LINK_CODE_RATE_LIMIT_MAX`
+- `LINK_CONFIRM_RATE_LIMIT_WINDOW_MINUTES`, `LINK_CONFIRM_RATE_LIMIT_MAX`
+- `FLAG_RATE_LIMIT_WINDOW_MINUTES`, `FLAG_RATE_LIMIT_MAX`
+- `CLAIM_RATE_LIMIT_WINDOW_MINUTES`, `CLAIM_RATE_LIMIT_MAX`
+- `SMART_SEARCH_RATE_LIMIT_WINDOW_MINUTES`, `SMART_SEARCH_RATE_LIMIT_MAX`
+- `CATEGORY_SUGGEST_RATE_LIMIT_WINDOW_MINUTES`, `CATEGORY_SUGGEST_RATE_LIMIT_MAX`
+- `ADMIN_AUDIT_RATE_LIMIT_WINDOW_MINUTES`, `ADMIN_AUDIT_RATE_LIMIT_MAX`
+
 ## Moderation & Trust/Safety
 
 - Reports have moderation status: `pending`, `approved`, `rejected`, `flagged`.

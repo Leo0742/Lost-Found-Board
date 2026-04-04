@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
@@ -27,10 +29,13 @@ def list_events(
     db: Session,
     *,
     limit: int = 50,
+    offset: int = 0,
     event_type: str | None = None,
     actor_telegram_user_id: int | None = None,
     item_id: int | None = None,
     claim_id: int | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> list[AuditEvent]:
     query: Select[tuple[AuditEvent]] = select(AuditEvent)
     if event_type:
@@ -41,5 +46,9 @@ def list_events(
         query = query.where(AuditEvent.item_id == item_id)
     if claim_id is not None:
         query = query.where(AuditEvent.claim_id == claim_id)
-    query = query.order_by(AuditEvent.created_at.desc()).limit(limit)
+    if created_from is not None:
+        query = query.where(AuditEvent.created_at >= created_from)
+    if created_to is not None:
+        query = query.where(AuditEvent.created_at <= created_to)
+    query = query.order_by(AuditEvent.created_at.desc()).offset(offset).limit(limit)
     return list(db.scalars(query).all())

@@ -181,3 +181,21 @@ class AuditEventRead(BaseModel):
     claim_id: int | None = None
     details: dict = Field(default_factory=dict)
     created_at: datetime
+
+
+class ModerationSignalRead(BaseModel):
+    item_id: int
+    total_flags: int = 0
+    recent_flags_24h: int = 0
+    recent_claims_24h: int = 0
+    claim_count: int = 0
+    last_flag_at: datetime | None = None
+    suspicion_markers: list[str] = Field(default_factory=list)
+
+
+class ModerationStatsRead(BaseModel):
+    pending: int
+    flagged: int
+    active: int
+    unresolved_claims: int
+    recent_abuse_blocks_24h: int

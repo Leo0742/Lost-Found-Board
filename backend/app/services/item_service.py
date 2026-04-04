@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Select, select, func
+from sqlalchemy import Select, and_, func, select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
 
@@ -14,7 +14,9 @@ from app.services.matching import score_match_detailed
 from app.services.catalog import CATEGORY_CATALOG, infer_category
 from app.services.search_utils import rank_items
 from app.services.audit import log_event
+from app.services.anti_abuse import has_recent_duplicate
 from app.services.media import finalize_uploaded_image, is_tmp_path, remove_media_file
+from app.models.anti_abuse_event import AntiAbuseEvent
 
 
 class ItemService:
@@ -127,6 +129,65 @@ class ItemService:
             like_q = f"%{q}%"
             query = query.where(Item.title.ilike(like_q) | Item.description.ilike(like_q) | Item.location.ilike(like_q))
         query = query.order_by(Item.created_at.desc())
+        return list(self.db.scalars(query).all())
+
+    def list_items_admin(
+        self,
+        *,
+        status: ItemStatus | None = None,
+        lifecycle: ItemLifecycle | None = None,
+        moderation_status: ModerationStatus | None = None,
+        category: str | None = None,
+        is_verified: bool | None = None,
+        actor_telegram_user_id: int | None = None,
+        q: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[Item]:
+        query: Select[tuple[Item]] = select(Item)
+        if lifecycle:
+            query = query.where(Item.lifecycle == lifecycle)
+        if moderation_status:
+            query = query.where(Item.moderation_status == moderation_status)
+        if status:
+            query = query.where(Item.status == status)
+        if category:
+            query = query.where(Item.category.ilike(category))
+        if is_verified is not None:
+            query = query.where(Item.is_verified.is_(is_verified))
+        if actor_telegram_user_id is not None:
+            query = query.where(
+                (Item.owner_telegram_user_id == actor_telegram_user_id)
+                | (Item.telegram_user_id == actor_telegram_user_id)
+            )
+        if created_from:
+            query = query.where(Item.created_at >= created_from)
+        if created_to:
+            query = query.where(Item.created_at <= created_to)
+        if q:
+            like_q = f"%{q}%"
+            query = query.where(
+                Item.title.ilike(like_q)
+                | Item.description.ilike(like_q)
+                | Item.location.ilike(like_q)
+                | Item.contact_name.ilike(like_q)
+                | Item.owner_telegram_username.ilike(like_q)
+                | Item.telegram_username.ilike(like_q)
+            )
+
+        sort_fields = {
+            "created_at": Item.created_at,
+            "updated_at": Item.updated_at,
+            "moderated_at": Item.moderated_at,
+            "id": Item.id,
+        }
+        col = sort_fields.get(sort_by, Item.created_at)
+        query = query.order_by(col.asc() if sort_order == "asc" else col.desc())
+        query = query.limit(limit).offset(offset)
         return list(self.db.scalars(query).all())
 
     def list_categories(self) -> list[str]:
@@ -268,14 +329,45 @@ class ItemService:
             return self.reopen(item)
         return self.delete_item(item)
 
-    def flag_item(self, item: Item, reason: str) -> Item:
+    def flag_item(self, item: Item, reason: str, *, actor_telegram_user_id: int | None = None, session_id: str | None = None, ip_hash: str | None = None) -> Item:
+        fingerprint = " ".join(reason.lower().split())
+        if has_recent_duplicate(
+            self.db,
+            action="flag_item_submission",
+            actor_telegram_user_id=actor_telegram_user_id,
+            session_id=session_id,
+            ip_hash=ip_hash,
+            fingerprint=fingerprint,
+            item_id=item.id,
+            within_hours=24,
+        ):
+            raise HTTPException(status_code=409, detail="You already submitted the same flag recently.")
+
         item.moderation_status = ModerationStatus.FLAGGED
         item.moderation_reason = reason
         item.moderated_at = datetime.now(UTC)
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
-        log_event(self.db, "item_flagged", item_id=item.id, details={"reason": reason})
+        self.db.add(
+            AntiAbuseEvent(
+                action="flag_item_submission",
+                actor_telegram_user_id=actor_telegram_user_id,
+                session_id=session_id,
+                ip_hash=ip_hash,
+                fingerprint=fingerprint,
+                item_id=item.id,
+                blocked=False,
+            )
+        )
+        self.db.commit()
+        log_event(
+            self.db,
+            "item_flagged",
+            actor_telegram_user_id=actor_telegram_user_id,
+            item_id=item.id,
+            details={"reason": reason, "session_id": bool(session_id), "ip_tracked": bool(ip_hash)},
+        )
         self.db.commit()
         return item
 

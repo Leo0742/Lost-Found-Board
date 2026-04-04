@@ -25,6 +25,24 @@ export type AuditEvent = {
   created_at: string
 }
 
+export type ModerationSignal = {
+  item_id: number
+  total_flags: number
+  recent_flags_24h: number
+  recent_claims_24h: number
+  claim_count: number
+  last_flag_at?: string | null
+  suspicion_markers: string[]
+}
+
+export type ModerationStats = {
+  pending: number
+  flagged: number
+  active: number
+  unresolved_claims: number
+  recent_abuse_blocks_24h: number
+}
+
 export const fetchItems = async (params: { q?: string; status?: ItemStatus | 'all'; category?: string; lifecycle?: ItemLifecycle | 'all' }) => {
   const query: Record<string, string> = {}
   if (params.q) query.q = params.q
@@ -123,7 +141,7 @@ export const fetchMyItems = async () => {
   return response.data
 }
 
-export const fetchAdminItems = async (params: { moderation_status?: string; lifecycle?: string; q?: string }) => {
+export const fetchAdminItems = async (params: { moderation_status?: string; lifecycle?: string; q?: string; category?: string; status?: string; is_verified?: boolean; actor_telegram_user_id?: number; sort_by?: string; sort_order?: string; limit?: number; offset?: number }) => {
   const response = await apiClient.get<Item[]>('/items/admin/items', {
     params
   })
@@ -145,8 +163,18 @@ export const lifecycleItemAdmin = async (itemId: number, action: 'resolve' | 're
   return response.data
 }
 
-export const fetchAuditEvents = async (params: { event_type?: string; actor_telegram_user_id?: number; item_id?: number; claim_id?: number; limit?: number }) => {
+export const fetchAuditEvents = async (params: { event_type?: string; actor_telegram_user_id?: number; item_id?: number; claim_id?: number; limit?: number; offset?: number; created_from?: string; created_to?: string }) => {
   const response = await apiClient.get<AuditEvent[]>('/items/admin/audit-events', { params })
+  return response.data
+}
+
+export const fetchModerationSignals = async (itemIds: number[]) => {
+  const response = await apiClient.get<ModerationSignal[]>('/items/admin/moderation-signals', { params: { item_ids: itemIds } })
+  return response.data
+}
+
+export const fetchModerationStats = async () => {
+  const response = await apiClient.get<ModerationStats>('/items/admin/moderation-stats')
   return response.data
 }
 
