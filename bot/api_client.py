@@ -20,6 +20,14 @@ class BackendClient:
             response.raise_for_status()
             return response.json()
 
+    async def fetch_media_bytes(self, image_path: str) -> tuple[bytes, str]:
+        media_base_url = self.base_url.removesuffix("/api")
+        normalized_path = image_path.lstrip("/")
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.get(f"{media_base_url}/media/{normalized_path}")
+            response.raise_for_status()
+            return response.content, response.headers.get("content-type", "application/octet-stream")
+
     async def list_items(self, params: dict | None = None) -> list[dict]:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.get(f"{self.base_url}/items", params=params or {})
