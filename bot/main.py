@@ -1,12 +1,15 @@
 import sys
+from pathlib import Path
 
 import httpx
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     BotCommand,
+    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -198,10 +201,46 @@ def _render_item_summary(item: dict) -> str:
     )
 
 
-def _photo_url(image_path: str | None) -> str | None:
+def _photo_filename(image_path: str) -> str:
+    filename = Path(image_path).name
+    return filename or "item.jpg"
+
+
+async def _answer_with_backend_photo_or_text(
+    message: Message,
+    text: str,
+    image_path: str | None,
+    reply_markup: ReplyKeyboardMarkup | InlineKeyboardMarkup | None = None,
+) -> None:
     if not image_path:
-        return None
-    return f"{api.base_url.removesuffix('/api')}/media/{image_path}"
+        await message.answer(text, reply_markup=reply_markup)
+        return
+
+    try:
+        image_bytes, _ = await api.fetch_media_bytes(image_path)
+        image_file = BufferedInputFile(image_bytes, filename=_photo_filename(image_path))
+        await message.answer_photo(photo=image_file, caption=text, reply_markup=reply_markup)
+    except (httpx.HTTPError, TelegramBadRequest):
+        await message.answer(text, reply_markup=reply_markup)
+
+
+async def _send_with_backend_photo_or_text(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    image_path: str | None,
+    reply_markup: ReplyKeyboardMarkup | InlineKeyboardMarkup | None = None,
+) -> None:
+    if not image_path:
+        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        return
+
+    try:
+        image_bytes, _ = await api.fetch_media_bytes(image_path)
+        image_file = BufferedInputFile(image_bytes, filename=_photo_filename(image_path))
+        await bot.send_photo(chat_id, photo=image_file, caption=text, reply_markup=reply_markup)
+    except (httpx.HTTPError, TelegramBadRequest):
+        await bot.send_message(chat_id, text, reply_markup=reply_markup)
 
 
 async def _clear_state(state: FSMContext) -> None:
@@ -481,15 +520,12 @@ async def cmd_my_items(message: Message) -> None:
         reply_markup=MAIN_KEYBOARD,
     )
     for item in items[:20]:
-        image_url = _photo_url(item.get("image_path"))
-        if image_url:
-            await message.answer_photo(
-                photo=image_url,
-                caption=_render_item_summary(item),
-                reply_markup=_item_actions_keyboard(item["id"], item["lifecycle"]),
-            )
-        else:
-            await message.answer(_render_item_summary(item), reply_markup=_item_actions_keyboard(item["id"], item["lifecycle"]))
+        await _answer_with_backend_photo_or_text(
+            message=message,
+            text=_render_item_summary(item),
+            image_path=item.get("image_path"),
+            reply_markup=_item_actions_keyboard(item["id"], item["lifecycle"]),
+        )
 
 
 @dp.message(Command("claims"))
@@ -608,12 +644,12 @@ async def keyboard_clear(message: Message, state: FSMContext) -> None:
     await cmd_clear(message, state)
 
 
-@dp.message(NewItemForm, F.text.casefold() == "cancel")
+@dp.message(StateFilter(NewItemForm), F.text.casefold() == "cancel")
 async def wizard_cancel(message: Message, state: FSMContext) -> None:
     await _cancel_wizard(message, state)
 
 
-@dp.message(NewItemForm, F.text.casefold() == "back")
+@dp.message(StateFilter(NewItemForm), F.text.casefold() == "back")
 async def wizard_back(message: Message, state: FSMContext) -> None:
     await _go_back(message, state)
 
@@ -762,11 +798,12 @@ async def review_action(callback: CallbackQuery, state: FSMContext) -> None:
             raise
 
         await state.clear()
-        image_url = _photo_url(item.get("image_path"))
-        if image_url:
-            await callback.message.answer_photo(photo=image_url, caption=f"✅ Item created: #{item['id']} {item['title']}", reply_markup=MAIN_KEYBOARD)
-        else:
-            await callback.message.answer(f"✅ Item created: #{item['id']} {item['title']}", reply_markup=MAIN_KEYBOARD)
+        await _answer_with_backend_photo_or_text(
+            message=callback.message,
+            text=f"✅ Item created: #{item['id']} {item['title']}",
+            image_path=item.get("image_path"),
+            reply_markup=MAIN_KEYBOARD,
+        )
 
         try:
             matches = await api.get_matches(item["id"])
@@ -834,32 +871,36 @@ async def _notify_strong_matches(bot: Bot, source_item: dict, matches: list[dict
             continue
         notified.add(owner_id)
         try:
-            await bot.send_message(
-                owner_id,
-                "🔔 Possible match found for your report.\n"
-                f"Your potential match: {match['title']}\n"
-                f"New report: {source_item['title']}\n"
-                f"Confidence: {match.get('confidence', 'low').title()}\n"
-                f"Why: {', '.join(match.get('reasons', [])[:3]) or 'similar signals'}",
+            await _send_with_backend_photo_or_text(
+                bot=bot,
+                chat_id=owner_id,
+                text=(
+                    "🔔 Possible match found for your report.\n"
+                    f"Your potential match: {match['title']}\n"
+                    f"New report: {source_item['title']}\n"
+                    f"Confidence: {match.get('confidence', 'low').title()}\n"
+                    f"Why: {', '.join(match.get('reasons', [])[:3]) or 'similar signals'}"
+                ),
+                image_path=match.get("image_path"),
                 reply_markup=MAIN_KEYBOARD,
             )
-            if match.get("image_path"):
-                await bot.send_photo(owner_id, photo=_photo_url(match["image_path"]))
         except Exception:
             continue
 
     if creator_id and matches:
         try:
             top = matches[0]
-            await bot.send_message(
-                int(creator_id),
-                "🔔 Strong possible match detected for your new report.\n"
-                f"Matched item: {top['title']}\n"
-                f"Confidence: {top.get('confidence', 'low').title()}",
+            await _send_with_backend_photo_or_text(
+                bot=bot,
+                chat_id=int(creator_id),
+                text=(
+                    "🔔 Strong possible match detected for your new report.\n"
+                    f"Matched item: {top['title']}\n"
+                    f"Confidence: {top.get('confidence', 'low').title()}"
+                ),
+                image_path=top.get("image_path"),
                 reply_markup=MAIN_KEYBOARD,
             )
-            if top.get("image_path"):
-                await bot.send_photo(int(creator_id), photo=_photo_url(top["image_path"]))
         except Exception:
             return
 

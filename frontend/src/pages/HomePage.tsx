@@ -49,7 +49,7 @@ export const HomePage = () => {
   return (
     <section className="stack">
       <PageHero
-        title="A premium lost & found workspace"
+        title="Lost & Found Workspace"
         subtitle="Report, discover, and resolve ownership with trusted workflows, richer matches, and clear lifecycle tracking."
         actions={
           <>
