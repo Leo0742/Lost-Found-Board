@@ -173,10 +173,25 @@ def has_recent_duplicate(
     return db.scalar(query.limit(1)) is not None
 
 
-def cleanup_expired_events(db: Session, *, retention_days: int) -> int:
+def cleanup_expired_events(db: Session, *, retention_days: int, batch_size: int = 2000) -> int:
     if retention_days <= 0:
         return 0
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
-    result = db.execute(delete(AntiAbuseEvent).where(AntiAbuseEvent.created_at < cutoff))
-    db.commit()
-    return result.rowcount or 0
+    total_removed = 0
+    while True:
+        expired_ids = list(
+            db.scalars(
+                select(AntiAbuseEvent.id)
+                .where(AntiAbuseEvent.created_at < cutoff)
+                .order_by(AntiAbuseEvent.created_at.asc())
+                .limit(batch_size)
+            )
+        )
+        if not expired_ids:
+            break
+        result = db.execute(delete(AntiAbuseEvent).where(AntiAbuseEvent.id.in_(expired_ids)))
+        db.commit()
+        total_removed += result.rowcount or 0
+        if len(expired_ids) < batch_size:
+            break
+    return total_removed

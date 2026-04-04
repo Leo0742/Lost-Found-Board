@@ -17,6 +17,7 @@ from app.services.matching import semantic_runtime_status, warmup_embedding_mode
 from app.services.media import cleanup_stale_temp_uploads, ensure_media_dirs, cleanup_finalized_orphans
 from app.services.readiness import check_readiness
 from app.services.anti_abuse import cleanup_expired_events
+from app.services.audit import cleanup_expired_events as cleanup_expired_audit_events
 from app.db.session import SessionLocal
 
 settings = get_settings()
@@ -37,10 +38,13 @@ async def lifespan(_: FastAPI):
     try:
         with SessionLocal() as db:
             abuse_removed = cleanup_expired_events(db, retention_days=settings.anti_abuse_event_retention_days)
+            audit_removed = cleanup_expired_audit_events(db, retention_days=settings.audit_event_retention_days)
         if abuse_removed:
             logger.info("Removed %s expired anti-abuse events on startup.", abuse_removed)
+        if audit_removed:
+            logger.info("Removed %s expired audit events on startup.", audit_removed)
     except Exception as exc:
-        logger.info("Skipping anti-abuse retention cleanup on startup: %s", exc)
+        logger.info("Skipping event retention cleanup on startup: %s", exc)
 
     if settings.embedding_warmup_on_startup:
         warmup_embedding_model()
@@ -69,10 +73,13 @@ async def lifespan(_: FastAPI):
             try:
                 with SessionLocal() as db:
                     expired = cleanup_expired_events(db, retention_days=settings.anti_abuse_event_retention_days)
+                    expired_audit = cleanup_expired_audit_events(db, retention_days=settings.audit_event_retention_days)
                 if expired:
                     logger.info("Periodic cleanup removed %s expired anti-abuse events.", expired)
+                if expired_audit:
+                    logger.info("Periodic cleanup removed %s expired audit events.", expired_audit)
             except Exception as exc:
-                logger.info("Skipping anti-abuse retention cleanup: %s", exc)
+                logger.info("Skipping event retention cleanup: %s", exc)
 
     cleanup_task = asyncio.create_task(_periodic_temp_cleanup())
     try:

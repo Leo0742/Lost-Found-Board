@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import Select, select
+from datetime import UTC, timedelta
+
+from sqlalchemy import Select, delete, select
 from sqlalchemy.orm import Session
 
 from app.models.audit_event import AuditEvent
@@ -63,8 +65,32 @@ def list_events(
         query = query.where(AuditEvent.created_at >= created_from)
     if created_to is not None:
         query = query.where(AuditEvent.created_at <= created_to)
-    query = query.order_by(AuditEvent.created_at.desc()).offset(offset).limit(limit)
+    query = query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).offset(offset).limit(limit)
     return list(db.scalars(query).all())
+
+
+def cleanup_expired_events(db: Session, *, retention_days: int, batch_size: int = 2000) -> int:
+    if retention_days <= 0:
+        return 0
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    total_removed = 0
+    while True:
+        expired_ids = list(
+            db.scalars(
+                select(AuditEvent.id)
+                .where(AuditEvent.created_at < cutoff)
+                .order_by(AuditEvent.created_at.asc())
+                .limit(batch_size)
+            )
+        )
+        if not expired_ids:
+            break
+        result = db.execute(delete(AuditEvent).where(AuditEvent.id.in_(expired_ids)))
+        db.commit()
+        total_removed += result.rowcount or 0
+        if len(expired_ids) < batch_size:
+            break
+    return total_removed
 
 
 def describe_event(event: AuditEvent) -> dict:

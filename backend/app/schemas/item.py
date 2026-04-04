@@ -131,6 +131,36 @@ class ItemLifecycleAdminAction(BaseModel):
     action: str = Field(pattern="^(resolve|reopen|delete)$")
 
 
+class ItemBulkModerationAction(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=200)
+    action: str = Field(pattern="^(approve|reject|flag|unflag)$")
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class ItemBulkVerificationAction(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=200)
+    is_verified: bool = True
+
+
+class ItemBulkLifecycleAction(BaseModel):
+    item_ids: list[int] = Field(min_length=1, max_length=200)
+    action: str = Field(pattern="^(resolve|reopen|delete)$")
+
+
+class ItemBulkActionResult(BaseModel):
+    item_id: int
+    success: bool
+    detail: str | None = None
+
+
+class ItemBulkActionResponse(BaseModel):
+    action: str
+    processed: int
+    succeeded: int
+    failed: int
+    results: list[ItemBulkActionResult] = Field(default_factory=list)
+
+
 class ItemFlagRequest(BaseModel):
     reason: str = Field(min_length=2, max_length=255)
 
@@ -205,3 +235,23 @@ class ModerationStatsRead(BaseModel):
     active: int
     unresolved_claims: int
     recent_abuse_blocks_24h: int
+
+
+class AdminQueueSummaryRead(BaseModel):
+    pending_total: int
+    flagged_total: int
+    approved_total: int
+    rejected_total: int
+    high_risk_flagged_24h: int
+    stale_pending_48h: int
+
+
+class AdminObservabilityRead(BaseModel):
+    recent_abuse_blocks_24h: int
+    duplicate_flags_24h: int
+    duplicate_claims_24h: int
+    blocked_admin_audit_queries_24h: int
+    claims_created_24h: int
+    unresolved_claims_total: int
+    cleanup: dict = Field(default_factory=dict)
+    semantic_runtime: dict = Field(default_factory=dict)

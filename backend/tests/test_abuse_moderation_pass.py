@@ -103,3 +103,44 @@ def test_admin_audit_and_moderation_stats_filters(client, db_session_factory, mo
     assert signals.json()[0]["item_id"] == item["id"]
     assert "duplicate_flags_24h" in signals.json()[0]
     assert "blocked_events_24h" in signals.json()[0]
+
+
+def test_admin_bulk_actions_and_observability(client, db_session_factory, monkeypatch):
+    monkeypatch.setenv("ADMIN_TELEGRAM_USER_IDS", "3001")
+    get_settings.cache_clear()
+
+    session_id, csrf = _create_web_session(db_session_factory, telegram_user_id=3001)
+    cookies = {"lfb_session": session_id}
+    headers = {"X-CSRF-Token": csrf}
+
+    one = client.post("/api/items", json=_payload("Bulk one", user_id=990)).json()
+    two = client.post("/api/items", json=_payload("Bulk two", user_id=991)).json()
+
+    bulk_mod = client.post(
+        "/api/items/admin/items/bulk-moderate",
+        json={"item_ids": [one["id"], two["id"]], "action": "approve"},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert bulk_mod.status_code == 200
+    assert bulk_mod.json()["succeeded"] == 2
+
+    bulk_verify = client.post(
+        "/api/items/admin/items/bulk-verify",
+        json={"item_ids": [one["id"], two["id"]], "is_verified": True},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert bulk_verify.status_code == 200
+    assert bulk_verify.json()["failed"] == 0
+
+    queue_summary = client.get("/api/items/admin/queue-summary", cookies=cookies, headers=headers)
+    assert queue_summary.status_code == 200
+    assert "pending_total" in queue_summary.json()
+    assert "stale_pending_48h" in queue_summary.json()
+
+    observability = client.get("/api/items/admin/observability", cookies=cookies, headers=headers)
+    assert observability.status_code == 200
+    payload = observability.json()
+    assert "duplicate_flags_24h" in payload
+    assert "cleanup" in payload

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     admin_audit_rate_limit_window_minutes: int = 5
     admin_audit_rate_limit_max: int = 120
     anti_abuse_event_retention_days: int = 30
+    audit_event_retention_days: int = 180
     web_session_ttl_days: int = 30
     web_link_code_ttl_minutes: int = 10
     web_session_cookie_secure: bool = False

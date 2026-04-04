@@ -1,13 +1,21 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
+  bulkLifecycleItems,
+  bulkModerateItems,
+  bulkVerifyItems,
   fetchAdminItems,
+  fetchAdminObservability,
+  fetchAdminQueueSummary,
   fetchAuditEvents,
   fetchModerationSignals,
   fetchModerationStats,
+  lifecycleItemAdmin,
   moderateItem,
   verifyItemAdmin,
-  lifecycleItemAdmin,
+  type AdminObservability,
+  type AdminQueueSummary,
   type AuditEvent,
+  type BulkActionResponse,
   type ModerationSignal,
   type ModerationStats,
 } from '../api/items'
@@ -27,6 +35,7 @@ export type ItemFilters = {
   sortOrder: string
   createdFrom: string
   createdTo: string
+  limit: number
 }
 
 export type AuditFilters = {
@@ -51,6 +60,7 @@ const defaultItemFilters: ItemFilters = {
   sortOrder: 'desc',
   createdFrom: '',
   createdTo: '',
+  limit: 100,
 }
 
 const defaultAuditFilters: AuditFilters = {
@@ -67,16 +77,23 @@ export const useAdminDashboard = () => {
   const [items, setItems] = useState<Item[]>([])
   const [signals, setSignals] = useState<Record<number, ModerationSignal>>({})
   const [stats, setStats] = useState<ModerationStats | null>(null)
+  const [queueSummary, setQueueSummary] = useState<AdminQueueSummary | null>(null)
+  const [observability, setObservability] = useState<AdminObservability | null>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [itemFilters, setItemFilters] = useState<ItemFilters>(defaultItemFilters)
   const [auditFilters, setAuditFilters] = useState<AuditFilters>(defaultAuditFilters)
+  const [itemsOffset, setItemsOffset] = useState(0)
   const [auditOffset, setAuditOffset] = useState(0)
   const [loadingItems, setLoadingItems] = useState(false)
   const [loadingAudit, setLoadingAudit] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [itemError, setItemError] = useState<string | null>(null)
+  const [auditError, setAuditError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
 
-  const loadItems = useCallback(async (nextFilters?: ItemFilters) => {
+  const loadItems = useCallback(async (nextFilters?: ItemFilters, nextOffset?: number) => {
     const effectiveFilters = nextFilters ?? itemFilters
+    const effectiveOffset = nextOffset ?? itemsOffset
     setLoadingItems(true)
     try {
       const rows = await fetchAdminItems({
@@ -91,18 +108,20 @@ export const useAdminDashboard = () => {
         created_to: effectiveFilters.createdTo || undefined,
         sort_by: effectiveFilters.sortBy,
         sort_order: effectiveFilters.sortOrder,
-        limit: 200,
+        limit: effectiveFilters.limit,
+        offset: effectiveOffset,
       })
       setItems(rows)
-      const signalRows = rows.length ? await fetchModerationSignals(rows.map((item) => item.id)) : []
-      setSignals(Object.fromEntries(signalRows.map((row) => [row.item_id, row])))
-      setError(null)
+      const ids = rows.map((item) => item.id)
+      const signalRows = ids.length ? await fetchModerationSignals(ids) : []
+      setSignals((prev) => ({ ...prev, ...Object.fromEntries(signalRows.map((row) => [row.item_id, row])) }))
+      setItemError(null)
     } catch {
-      setError('Could not load moderation queue.')
+      setItemError('Could not load moderation queue.')
     } finally {
       setLoadingItems(false)
     }
-  }, [itemFilters])
+  }, [itemFilters, itemsOffset])
 
   const loadAudit = useCallback(async (nextOffset = auditOffset, nextFilters?: AuditFilters) => {
     const effectiveFilters = nextFilters ?? auditFilters
@@ -119,35 +138,64 @@ export const useAdminDashboard = () => {
         created_to: effectiveFilters.auditCreatedTo || undefined,
       })
       setAuditEvents(rows)
-      setError(null)
+      setAuditError(null)
     } catch {
-      setError('Could not load audit events.')
+      setAuditError('Could not load audit events.')
     } finally {
       setLoadingAudit(false)
     }
   }, [auditFilters, auditOffset])
 
   const loadStats = useCallback(async () => {
-    try {
-      setStats(await fetchModerationStats())
-    } catch {
-      setError('Could not load moderation stats.')
-    }
+    const [nextStats, nextQueueSummary, nextObservability] = await Promise.all([
+      fetchModerationStats(),
+      fetchAdminQueueSummary(),
+      fetchAdminObservability(),
+    ])
+    setStats(nextStats)
+    setQueueSummary(nextQueueSummary)
+    setObservability(nextObservability)
   }, [])
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadItems(), loadAudit(0), loadStats()])
+    await Promise.all([loadItems(undefined, 0), loadAudit(0), loadStats()])
+    setItemsOffset(0)
     setAuditOffset(0)
   }, [loadAudit, loadItems, loadStats])
 
-  const runModerationAction = useCallback(async (action: () => Promise<unknown>) => {
+  const runSingleItemAction = useCallback(async (itemId: number, action: () => Promise<Item>) => {
+    setActionLoading(true)
     try {
-      await action()
-      await refreshAll()
+      const updated = await action()
+      setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
+      const refreshedSignals = await fetchModerationSignals([itemId])
+      if (refreshedSignals[0]) {
+        setSignals((prev) => ({ ...prev, [itemId]: refreshedSignals[0] }))
+      }
+      await loadStats()
+      setActionMessage(`Action completed for #${itemId}.`)
     } catch {
-      setError('Admin action failed.')
+      setActionMessage(`Admin action failed for #${itemId}.`)
+    } finally {
+      setActionLoading(false)
     }
-  }, [refreshAll])
+  }, [loadStats])
+
+  const runBulkAction = useCallback(async (actionLabel: string, action: () => Promise<BulkActionResponse>) => {
+    setActionLoading(true)
+    try {
+      const result = await action()
+      await loadItems()
+      await loadStats()
+      const failedIds = result.results.filter((row) => !row.success).map((row) => row.item_id)
+      const failedSegment = failedIds.length ? ` Failed: ${failedIds.slice(0, 8).join(', ')}` : ''
+      setActionMessage(`${actionLabel}: ${result.succeeded}/${result.processed} succeeded.${failedSegment}`)
+    } catch {
+      setActionMessage(`${actionLabel} failed.`)
+    } finally {
+      setActionLoading(false)
+    }
+  }, [loadItems, loadStats])
 
   const applyPreset = useCallback(async (preset: QueuePreset) => {
     const nextFilters: ItemFilters = {
@@ -170,8 +218,9 @@ export const useAdminDashboard = () => {
       nextFilters.query = 'duplicate'
     }
 
+    setItemsOffset(0)
     setItemFilters(nextFilters)
-    await loadItems(nextFilters)
+    await loadItems(nextFilters, 0)
   }, [loadItems])
 
   const summary = useMemo(() => ({
@@ -191,22 +240,30 @@ export const useAdminDashboard = () => {
     items,
     signals,
     stats,
+    queueSummary,
+    observability,
     auditEvents,
     itemFilters,
     setItemFilters,
     auditFilters,
     setAuditFilters,
+    itemsOffset,
+    setItemsOffset,
     auditOffset,
     setAuditOffset,
     loadingItems,
     loadingAudit,
-    error,
-    setError,
+    actionLoading,
+    itemError,
+    auditError,
+    actionMessage,
+    setActionMessage,
     loadItems,
     loadAudit,
     loadStats,
     refreshAll,
-    runModerationAction,
+    runSingleItemAction,
+    runBulkAction,
     applyPreset,
     summary,
     flaggedQueue,
@@ -223,3 +280,9 @@ export const itemModerationAction = (
 export const itemVerifyAction = (itemId: number, isVerified: boolean) => verifyItemAdmin(itemId, isVerified)
 
 export const itemLifecycleAction = (itemId: number, action: 'resolve' | 'reopen' | 'delete') => lifecycleItemAdmin(itemId, action)
+
+export const bulkModerationAction = (itemIds: number[], action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => bulkModerateItems(itemIds, action, reason)
+
+export const bulkVerifyAction = (itemIds: number[], isVerified: boolean) => bulkVerifyItems(itemIds, isVerified)
+
+export const bulkLifecycleAction = (itemIds: number[], action: 'resolve' | 'reopen' | 'delete') => bulkLifecycleItems(itemIds, action)

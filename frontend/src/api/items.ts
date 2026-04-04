@@ -76,6 +76,40 @@ export type ModerationStats = {
   recent_abuse_blocks_24h: number
 }
 
+export type BulkActionResult = {
+  item_id: number
+  success: boolean
+  detail?: string | null
+}
+
+export type BulkActionResponse = {
+  action: string
+  processed: number
+  succeeded: number
+  failed: number
+  results: BulkActionResult[]
+}
+
+export type AdminQueueSummary = {
+  pending_total: number
+  flagged_total: number
+  approved_total: number
+  rejected_total: number
+  high_risk_flagged_24h: number
+  stale_pending_48h: number
+}
+
+export type AdminObservability = {
+  recent_abuse_blocks_24h: number
+  duplicate_flags_24h: number
+  duplicate_claims_24h: number
+  blocked_admin_audit_queries_24h: number
+  claims_created_24h: number
+  unresolved_claims_total: number
+  cleanup: Record<string, unknown>
+  semantic_runtime: Record<string, unknown>
+}
+
 export const fetchItems = async (params: { q?: string; status?: ItemStatus | 'all'; category?: string; lifecycle?: ItemLifecycle | 'all' }) => {
   const query: Record<string, string> = {}
   if (params.q) query.q = params.q
@@ -208,6 +242,31 @@ export const fetchModerationSignals = async (itemIds: number[]) => {
 
 export const fetchModerationStats = async () => {
   const response = await apiClient.get<ModerationStats>('/items/admin/moderation-stats')
+  return response.data
+}
+
+export const bulkModerateItems = async (item_ids: number[], action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
+  const response = await apiClient.post<BulkActionResponse>('/items/admin/items/bulk-moderate', { item_ids, action, reason })
+  return response.data
+}
+
+export const bulkVerifyItems = async (item_ids: number[], is_verified: boolean) => {
+  const response = await apiClient.post<BulkActionResponse>('/items/admin/items/bulk-verify', { item_ids, is_verified })
+  return response.data
+}
+
+export const bulkLifecycleItems = async (item_ids: number[], action: 'resolve' | 'reopen' | 'delete') => {
+  const response = await apiClient.post<BulkActionResponse>('/items/admin/items/bulk-lifecycle', { item_ids, action })
+  return response.data
+}
+
+export const fetchAdminQueueSummary = async () => {
+  const response = await apiClient.get<AdminQueueSummary>('/items/admin/queue-summary')
+  return response.data
+}
+
+export const fetchAdminObservability = async () => {
+  const response = await apiClient.get<AdminObservability>('/items/admin/observability')
   return response.data
 }
 
