@@ -28,9 +28,16 @@ from app.schemas.item import (
     InternalClaimAction,
     InternalClaimCreate,
     AuditEventRead,
+    AdminObservabilityRead,
+    AdminQueueSummaryRead,
     CategorySuggestionRead,
     ImageUploadResult,
     ItemAdminUpdate,
+    ItemBulkActionResponse,
+    ItemBulkActionResult,
+    ItemBulkLifecycleAction,
+    ItemBulkModerationAction,
+    ItemBulkVerificationAction,
     ItemCreate,
     ItemFlagRequest,
     ItemLifecycleAdminAction,
@@ -49,6 +56,7 @@ from app.schemas.item import (
 from app.services.anti_abuse import AbuseAction, RateLimitRule, client_ip_hash, enforce_rate_limit
 from app.services.audit import describe_event, list_events
 from app.services.item_service import ItemService
+from app.services.matching import semantic_runtime_status
 
 router = APIRouter(prefix="/api/items", tags=["items"])
 
@@ -243,45 +251,145 @@ def moderation_signals(
         return []
     now = datetime.now(UTC)
     since_24h = now - timedelta(hours=24)
-    rows: list[ModerationSignalRead] = []
-    for item_id in item_ids[:200]:
-        total_flags = db.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id)) or 0
-        recent_flags = db.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id, AuditEvent.created_at >= since_24h)) or 0
-        duplicate_flags_24h = db.scalar(select(func.count(AntiAbuseEvent.id)).where(AntiAbuseEvent.action == AbuseAction.FLAG_DUPLICATE.value, AntiAbuseEvent.item_id == item_id, AntiAbuseEvent.created_at >= since_24h)) or 0
-        blocked_events_24h = db.scalar(select(func.count(AntiAbuseEvent.id)).where(AntiAbuseEvent.item_id == item_id, AntiAbuseEvent.blocked.is_(True), AntiAbuseEvent.created_at >= since_24h)) or 0
-        claim_count = db.scalar(select(func.count(Claim.id)).where((Claim.source_item_id == item_id) | (Claim.target_item_id == item_id))) or 0
-        recent_claims = db.scalar(select(func.count(Claim.id)).where(((Claim.source_item_id == item_id) | (Claim.target_item_id == item_id)), Claim.created_at >= since_24h)) or 0
-        last_flag_at = db.scalar(
-            select(AuditEvent.created_at)
-            .where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id)
-            .order_by(AuditEvent.created_at.desc())
-            .limit(1)
+    requested_ids = item_ids[:200]
+    total_flags = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(AuditEvent.item_id, func.count(AuditEvent.id))
+            .where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id.in_(requested_ids))
+            .group_by(AuditEvent.item_id)
         )
+    }
+    recent_flags = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(AuditEvent.item_id, func.count(AuditEvent.id))
+            .where(
+                AuditEvent.event_type == "item_flagged",
+                AuditEvent.item_id.in_(requested_ids),
+                AuditEvent.created_at >= since_24h,
+            )
+            .group_by(AuditEvent.item_id)
+        )
+    }
+    last_flag_at = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(AuditEvent.item_id, func.max(AuditEvent.created_at))
+            .where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id.in_(requested_ids))
+            .group_by(AuditEvent.item_id)
+        )
+    }
+    duplicate_flags_24h = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(AntiAbuseEvent.item_id, func.count(AntiAbuseEvent.id))
+            .where(
+                AntiAbuseEvent.action == AbuseAction.FLAG_DUPLICATE.value,
+                AntiAbuseEvent.item_id.in_(requested_ids),
+                AntiAbuseEvent.created_at >= since_24h,
+            )
+            .group_by(AntiAbuseEvent.item_id)
+        )
+    }
+    blocked_events_24h = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(AntiAbuseEvent.item_id, func.count(AntiAbuseEvent.id))
+            .where(
+                AntiAbuseEvent.item_id.in_(requested_ids),
+                AntiAbuseEvent.blocked.is_(True),
+                AntiAbuseEvent.created_at >= since_24h,
+            )
+            .group_by(AntiAbuseEvent.item_id)
+        )
+    }
+    source_claim_counts = {
+        row[0]: row[1]
+        for row in db.execute(select(Claim.source_item_id, func.count(Claim.id)).where(Claim.source_item_id.in_(requested_ids)).group_by(Claim.source_item_id))
+    }
+    target_claim_counts = {
+        row[0]: row[1]
+        for row in db.execute(select(Claim.target_item_id, func.count(Claim.id)).where(Claim.target_item_id.in_(requested_ids)).group_by(Claim.target_item_id))
+    }
+    source_recent_claims = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(Claim.source_item_id, func.count(Claim.id))
+            .where(Claim.source_item_id.in_(requested_ids), Claim.created_at >= since_24h)
+            .group_by(Claim.source_item_id)
+        )
+    }
+    target_recent_claims = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(Claim.target_item_id, func.count(Claim.id))
+            .where(Claim.target_item_id.in_(requested_ids), Claim.created_at >= since_24h)
+            .group_by(Claim.target_item_id)
+        )
+    }
+    rows: list[ModerationSignalRead] = []
+    for item_id in requested_ids:
+        flag_total = int(total_flags.get(item_id) or 0)
+        recent_flag_total = int(recent_flags.get(item_id) or 0)
+        dup_flags = int(duplicate_flags_24h.get(item_id) or 0)
+        blocked_events = int(blocked_events_24h.get(item_id) or 0)
+        claim_total = int(source_claim_counts.get(item_id) or 0) + int(target_claim_counts.get(item_id) or 0)
+        recent_claim_total = int(source_recent_claims.get(item_id) or 0) + int(target_recent_claims.get(item_id) or 0)
         markers: list[str] = []
-        if recent_flags >= 3:
+        if recent_flag_total >= 3:
             markers.append("flag_spike_24h")
-        if total_flags >= 5:
+        if flag_total >= 5:
             markers.append("high_total_flags")
-        if recent_claims >= 3:
+        if recent_claim_total >= 3:
             markers.append("claim_spike_24h")
-        if duplicate_flags_24h >= 2:
+        if dup_flags >= 2:
             markers.append("duplicate_flag_pressure")
-        if blocked_events_24h >= 2:
+        if blocked_events >= 2:
             markers.append("abuse_blocks_24h")
         rows.append(
             ModerationSignalRead(
                 item_id=item_id,
-                total_flags=total_flags,
-                recent_flags_24h=recent_flags,
-                recent_claims_24h=recent_claims,
-                claim_count=claim_count,
-                duplicate_flags_24h=duplicate_flags_24h,
-                blocked_events_24h=blocked_events_24h,
-                last_flag_at=last_flag_at,
+                total_flags=flag_total,
+                recent_flags_24h=recent_flag_total,
+                recent_claims_24h=recent_claim_total,
+                claim_count=claim_total,
+                duplicate_flags_24h=dup_flags,
+                blocked_events_24h=blocked_events,
+                last_flag_at=last_flag_at.get(item_id),
                 suspicion_markers=markers,
             )
         )
     return rows
+
+
+def _run_bulk_action(
+    *,
+    item_ids: list[int],
+    action: str,
+    db: Session,
+    runner,
+) -> ItemBulkActionResponse:
+    unique_ids = list(dict.fromkeys(item_ids))
+    results: list[ItemBulkActionResult] = []
+    for item_id in unique_ids:
+        item = db.get(Item, item_id)
+        if not item:
+            results.append(ItemBulkActionResult(item_id=item_id, success=False, detail="Item not found"))
+            continue
+        try:
+            runner(item)
+            results.append(ItemBulkActionResult(item_id=item_id, success=True))
+        except HTTPException as exc:
+            results.append(ItemBulkActionResult(item_id=item_id, success=False, detail=str(exc.detail)))
+    succeeded = sum(1 for row in results if row.success)
+    return ItemBulkActionResponse(
+        action=action,
+        processed=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=results,
+    )
 
 
 @router.get("/admin/moderation-stats", response_model=ModerationStatsRead)
@@ -636,6 +744,22 @@ def moderate_item(
     return service.moderate_item(item, payload.action, moderator=role.value, reason=payload.reason)
 
 
+@router.post("/admin/items/bulk-moderate", response_model=ItemBulkActionResponse)
+def bulk_moderate_items(
+    payload: ItemBulkModerationAction,
+    _: None = Depends(require_csrf_for_session),
+    role: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> ItemBulkActionResponse:
+    service = ItemService(db)
+    return _run_bulk_action(
+        item_ids=payload.item_ids,
+        action=payload.action,
+        db=db,
+        runner=lambda item: service.moderate_item(item, payload.action, moderator=role.value, reason=payload.reason),
+    )
+
+
 @router.post("/admin/items/{item_id}/verify", response_model=ItemRead)
 def verify_item(
     item_id: int,
@@ -652,6 +776,23 @@ def verify_item(
     return service.verify_item(item, payload.is_verified)
 
 
+@router.post("/admin/items/bulk-verify", response_model=ItemBulkActionResponse)
+def bulk_verify_items(
+    payload: ItemBulkVerificationAction,
+    _: None = Depends(require_csrf_for_session),
+    _role: AdminRole = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ItemBulkActionResponse:
+    service = ItemService(db)
+    action = "verify" if payload.is_verified else "unverify"
+    return _run_bulk_action(
+        item_ids=payload.item_ids,
+        action=action,
+        db=db,
+        runner=lambda item: service.verify_item(item, payload.is_verified),
+    )
+
+
 @router.post("/admin/items/{item_id}/lifecycle", response_model=ItemRead)
 def admin_lifecycle(
     item_id: int,
@@ -666,6 +807,96 @@ def admin_lifecycle(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return service.admin_lifecycle_action(item, payload.action)
+
+
+@router.post("/admin/items/bulk-lifecycle", response_model=ItemBulkActionResponse)
+def bulk_lifecycle_items(
+    payload: ItemBulkLifecycleAction,
+    _: None = Depends(require_csrf_for_session),
+    _role: AdminRole = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ItemBulkActionResponse:
+    service = ItemService(db)
+    return _run_bulk_action(
+        item_ids=payload.item_ids,
+        action=payload.action,
+        db=db,
+        runner=lambda item: service.admin_lifecycle_action(item, payload.action),
+    )
+
+
+@router.get("/admin/queue-summary", response_model=AdminQueueSummaryRead)
+def admin_queue_summary(
+    _: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> AdminQueueSummaryRead:
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+    since_48h = datetime.now(UTC) - timedelta(hours=48)
+    high_risk_rows = db.execute(
+        select(AuditEvent.item_id)
+        .where(
+            AuditEvent.event_type == "item_flagged",
+            AuditEvent.item_id.is_not(None),
+            AuditEvent.created_at >= since_24h,
+        )
+        .group_by(AuditEvent.item_id)
+        .having(func.count(AuditEvent.id) >= 3)
+    )
+    return AdminQueueSummaryRead(
+        pending_total=db.scalar(select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.PENDING)) or 0,
+        flagged_total=db.scalar(select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.FLAGGED)) or 0,
+        approved_total=db.scalar(select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.APPROVED)) or 0,
+        rejected_total=db.scalar(select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.REJECTED)) or 0,
+        high_risk_flagged_24h=len(list(high_risk_rows)),
+        stale_pending_48h=db.scalar(
+            select(func.count(Item.id)).where(Item.moderation_status == ModerationStatus.PENDING, Item.created_at <= since_48h)
+        )
+        or 0,
+    )
+
+
+@router.get("/admin/observability", response_model=AdminObservabilityRead)
+def admin_observability(
+    _: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> AdminObservabilityRead:
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+    semantic = semantic_runtime_status()
+    return AdminObservabilityRead(
+        recent_abuse_blocks_24h=db.scalar(
+            select(func.count(AntiAbuseEvent.id)).where(AntiAbuseEvent.blocked.is_(True), AntiAbuseEvent.created_at >= since_24h)
+        )
+        or 0,
+        duplicate_flags_24h=db.scalar(
+            select(func.count(AntiAbuseEvent.id)).where(
+                AntiAbuseEvent.action == AbuseAction.FLAG_DUPLICATE.value,
+                AntiAbuseEvent.created_at >= since_24h,
+            )
+        )
+        or 0,
+        duplicate_claims_24h=db.scalar(
+            select(func.count(AntiAbuseEvent.id)).where(
+                AntiAbuseEvent.action == AbuseAction.CLAIM_DUPLICATE.value,
+                AntiAbuseEvent.created_at >= since_24h,
+            )
+        )
+        or 0,
+        blocked_admin_audit_queries_24h=db.scalar(
+            select(func.count(AntiAbuseEvent.id)).where(
+                AntiAbuseEvent.action == AbuseAction.ADMIN_AUDIT_LIST.value,
+                AntiAbuseEvent.blocked.is_(True),
+                AntiAbuseEvent.created_at >= since_24h,
+            )
+        )
+        or 0,
+        claims_created_24h=db.scalar(select(func.count(Claim.id)).where(Claim.created_at >= since_24h)) or 0,
+        unresolved_claims_total=db.scalar(select(func.count(Claim.id)).where(Claim.status.in_([ClaimStatus.PENDING, ClaimStatus.APPROVED]))) or 0,
+        cleanup={
+            "anti_abuse_retention_days": get_settings().anti_abuse_event_retention_days,
+            "audit_retention_days": get_settings().audit_event_retention_days,
+        },
+        semantic_runtime={"state": semantic.state.value, "detail": semantic.detail},
+    )
 
 
 @router.get("/matches/{item_id}", response_model=list[MatchResult])
