@@ -1,7 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import AdminRole, get_authenticated_telegram_user_id, require_admin, require_admin_or_moderator
+from app.core.auth import (
+    AdminRole,
+    get_admin_role_for_session,
+    get_authenticated_telegram_user_id,
+    get_session_from_cookie,
+    require_admin,
+    require_admin_or_moderator,
+    require_internal_access,
+)
+from app.models.auth_session import WebAuthSession
 from app.db.session import get_db
 from app.models.item import ItemLifecycle, ItemStatus, ModerationStatus
 from app.schemas.item import (
@@ -15,9 +24,11 @@ from app.schemas.item import (
     ItemLifecycleAdminAction,
     ItemModerationAction,
     ItemOwnerAction,
+    ItemPublicRead,
     ItemRead,
     ItemUpdate,
     ItemVerificationAction,
+    InternalMatchResult,
     MatchResult,
     SmartSearchResultRead,
 )
@@ -45,7 +56,18 @@ def create_item(
 
 
 @router.post("/upload-image", response_model=ImageUploadResult)
-def upload_item_image(image: UploadFile, db: Session = Depends(get_db)) -> ImageUploadResult:
+def upload_item_image(
+    image: UploadFile,
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: Session = Depends(get_db),
+) -> ImageUploadResult:
+    if not auth_telegram_user_id:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if not settings.internal_api_token or x_internal_token != settings.internal_api_token:
+            raise HTTPException(status_code=401, detail="Connect Telegram first")
     service = ItemService(db)
     image_path, image_filename, image_mime_type = service.save_image(image)
     image_url = service.image_url(image_path) or ""
@@ -57,14 +79,14 @@ def upload_item_image(image: UploadFile, db: Session = Depends(get_db)) -> Image
     )
 
 
-@router.get("", response_model=list[ItemRead])
+@router.get("", response_model=list[ItemPublicRead])
 def list_items(
     status: ItemStatus | None = Query(default=None),
     lifecycle: ItemLifecycle | None = Query(default=ItemLifecycle.ACTIVE),
     category: str | None = Query(default=None),
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
-) -> list[ItemRead]:
+) -> list[ItemPublicRead]:
     service = ItemService(db)
     return service.list_items(status=status, category=category, q=q, lifecycle=lifecycle)
 
@@ -82,8 +104,8 @@ def list_items_admin(
     return service.list_items(status=status, q=q, lifecycle=lifecycle, moderation_status=moderation_status)
 
 
-@router.get("/search", response_model=list[ItemRead])
-def search_items(q: str = Query(min_length=1), db: Session = Depends(get_db)) -> list[ItemRead]:
+@router.get("/search", response_model=list[ItemPublicRead])
+def search_items(q: str = Query(min_length=1), db: Session = Depends(get_db)) -> list[ItemPublicRead]:
     service = ItemService(db)
     return service.list_items(q=q)
 
@@ -110,12 +132,6 @@ def suggest_category(title: str = Query(min_length=1), db: Session = Depends(get
     return service.suggest_category(title)
 
 
-@router.get("/mine/{telegram_user_id}", response_model=list[ItemRead])
-def list_my_items(telegram_user_id: int, db: Session = Depends(get_db)) -> list[ItemRead]:
-    service = ItemService(db)
-    return service.list_my_items(telegram_user_id)
-
-
 @router.get("/me", response_model=list[ItemRead])
 def list_my_items_from_session(
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
@@ -125,6 +141,16 @@ def list_my_items_from_session(
         raise HTTPException(status_code=401, detail="Connect Telegram first")
     service = ItemService(db)
     return service.list_my_items(auth_telegram_user_id)
+
+
+@router.get("/internal/mine/{telegram_user_id}", response_model=list[ItemRead])
+def list_my_items_internal(
+    telegram_user_id: int,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> list[ItemRead]:
+    service = ItemService(db)
+    return service.list_my_items(telegram_user_id)
 
 
 @router.post("/claim-requests", response_model=ClaimRead)
@@ -175,11 +201,20 @@ def list_claims(
     return [service.claim_read(claim, viewer_telegram_user_id=actor_id) for claim in claims]
 
 
-@router.get("/{item_id}", response_model=ItemRead)
-def get_item(item_id: int, db: Session = Depends(get_db)) -> ItemRead:
+@router.get("/{item_id}", response_model=ItemPublicRead)
+def get_item(
+    item_id: int,
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    db: Session = Depends(get_db),
+) -> ItemPublicRead:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    is_public_visible = item.lifecycle == ItemLifecycle.ACTIVE and item.moderation_status == ModerationStatus.APPROVED
+    is_admin_or_moderator = bool(get_admin_role_for_session(session))
+    if not is_public_visible and not is_admin_or_moderator and not (auth_telegram_user_id and service.is_owner(item, auth_telegram_user_id)):
         raise HTTPException(status_code=404, detail="Item not found")
     return item
 
@@ -314,7 +349,20 @@ def get_matches(item_id: int, db: Session = Depends(get_db)) -> list[MatchResult
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return service.matches_for_item(item)
+    return service.matches_for_item(item, include_telegram_user_id=False)
+
+
+@router.get("/internal/matches/{item_id}", response_model=list[InternalMatchResult])
+def get_internal_matches(
+    item_id: int,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> list[InternalMatchResult]:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return service.matches_for_item(item, include_telegram_user_id=True)
 
 
 @router.post("/claim-requests/{claim_id}/approve", response_model=ClaimRead)

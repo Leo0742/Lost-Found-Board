@@ -28,6 +28,7 @@ api = BackendClient(
     settings.api_base_url,
     timeout_seconds=settings.api_timeout_seconds,
     match_timeout_seconds=settings.match_timeout_seconds,
+    internal_api_token=settings.internal_api_token,
 )
 
 FIELD_LIMITS = {
@@ -644,12 +645,36 @@ async def keyboard_clear(message: Message, state: FSMContext) -> None:
     await cmd_clear(message, state)
 
 
-@dp.message(StateFilter(NewItemForm), F.text.casefold() == "cancel")
+@dp.message(
+    StateFilter(
+        NewItemForm.status,
+        NewItemForm.title,
+        NewItemForm.category,
+        NewItemForm.location,
+        NewItemForm.description,
+        NewItemForm.contact,
+        NewItemForm.photo,
+        NewItemForm.review,
+    ),
+    F.text.casefold() == "cancel",
+)
 async def wizard_cancel(message: Message, state: FSMContext) -> None:
     await _cancel_wizard(message, state)
 
 
-@dp.message(StateFilter(NewItemForm), F.text.casefold() == "back")
+@dp.message(
+    StateFilter(
+        NewItemForm.status,
+        NewItemForm.title,
+        NewItemForm.category,
+        NewItemForm.location,
+        NewItemForm.description,
+        NewItemForm.contact,
+        NewItemForm.photo,
+        NewItemForm.review,
+    ),
+    F.text.casefold() == "back",
+)
 async def wizard_back(message: Message, state: FSMContext) -> None:
     await _go_back(message, state)
 

@@ -39,15 +39,20 @@ class ItemUpdate(BaseModel):
     lifecycle: ItemLifecycle | None = None
 
 
-class ItemRead(ItemBase):
+class ItemPublicRead(BaseModel):
     id: int
+    title: str
+    description: str
+    category: str
+    location: str
+    status: ItemStatus
     lifecycle: ItemLifecycle
     moderation_status: ModerationStatus
     moderation_reason: str | None = None
-    moderated_at: datetime | None = None
-    moderated_by: str | None = None
     is_verified: bool = False
-    verified_at: datetime | None = None
+    image_path: str | None = None
+    image_filename: str | None = None
+    image_mime_type: str | None = None
     created_at: datetime
     updated_at: datetime
     resolved_at: datetime | None = None
@@ -55,6 +60,18 @@ class ItemRead(ItemBase):
 
     class Config:
         from_attributes = True
+
+
+class ItemRead(ItemPublicRead):
+    moderated_at: datetime | None = None
+    moderated_by: str | None = None
+    verified_at: datetime | None = None
+    contact_name: str
+    telegram_username: str | None = None
+    telegram_user_id: int | None = None
+    owner_telegram_user_id: int | None = None
+    owner_telegram_username: str | None = None
+    owner_display_name: str | None = None
 
 
 class MatchResult(BaseModel):
@@ -66,12 +83,15 @@ class MatchResult(BaseModel):
     relevance_score: float
     confidence: str
     reasons: list[str] = Field(default_factory=list)
-    telegram_user_id: int | None = None
     image_path: str | None = None
 
 
+class InternalMatchResult(MatchResult):
+    telegram_user_id: int | None = None
+
+
 class SmartSearchResultRead(BaseModel):
-    item: ItemRead
+    item: ItemPublicRead
     relevance_score: float
     reasons: list[str] = Field(default_factory=list)
 

@@ -2,10 +2,23 @@ import httpx
 
 
 class BackendClient:
-    def __init__(self, base_url: str, timeout_seconds: float = 15.0, match_timeout_seconds: float = 45.0):
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float = 15.0,
+        match_timeout_seconds: float = 45.0,
+        internal_api_token: str | None = None,
+    ):
         self.base_url = base_url.rstrip('/')
         self.timeout_seconds = timeout_seconds
         self.match_timeout_seconds = match_timeout_seconds
+        self.internal_api_token = internal_api_token
+
+    @property
+    def _internal_headers(self) -> dict[str, str]:
+        if not self.internal_api_token:
+            return {}
+        return {"X-Internal-Token": self.internal_api_token}
 
     async def create_item(self, payload: dict) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
@@ -16,7 +29,7 @@ class BackendClient:
     async def upload_item_image(self, content: bytes, filename: str = "telegram.jpg", mime_type: str = "image/jpeg") -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             files = {"image": (filename, content, mime_type)}
-            response = await client.post(f"{self.base_url}/items/upload-image", files=files)
+            response = await client.post(f"{self.base_url}/items/upload-image", files=files, headers=self._internal_headers)
             response.raise_for_status()
             return response.json()
 
@@ -57,13 +70,13 @@ class BackendClient:
 
     async def get_matches(self, item_id: int) -> list[dict] | None:
         async with httpx.AsyncClient(timeout=self.match_timeout_seconds) as client:
-            response = await client.get(f"{self.base_url}/items/matches/{item_id}")
+            response = await client.get(f"{self.base_url}/items/internal/matches/{item_id}", headers=self._internal_headers)
             response.raise_for_status()
             return response.json()
 
     async def list_my_items(self, telegram_user_id: int) -> list[dict]:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.get(f"{self.base_url}/items/mine/{telegram_user_id}")
+            response = await client.get(f"{self.base_url}/items/internal/mine/{telegram_user_id}", headers=self._internal_headers)
             response.raise_for_status()
             return response.json()
 

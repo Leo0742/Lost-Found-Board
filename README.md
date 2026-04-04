@@ -52,20 +52,21 @@ The codebase is intentionally modular for hackathon speed:
 ### Backend API
 - `POST /api/items`
 - `GET /api/items/me` (requires Telegram-linked web session cookie)
+- `GET /api/items/internal/mine/{telegram_user_id}` (internal bot-only, protected by `X-Internal-Token`)
 - `GET /api/items`
 - `GET /api/items/{id}`
 - `PATCH /api/items/{id}`
 - `DELETE /api/items/{id}`
-- `GET /api/items/mine/{telegram_user_id}`
 - `POST /api/items/{id}/resolve`
 - `POST /api/items/{id}/reopen`
 - `POST /api/items/{id}/delete` (soft delete)
-- `POST /api/items/upload-image` (multipart image upload)
+- `POST /api/items/upload-image` (multipart image upload; requires linked web session or internal bot token)
 - `GET /api/items/search?q=...`
 - `GET /api/items/search-smart?q=...&limit=...` (typo-tolerant ranked search with reasons)
 - `GET /api/items/categories` (canonical category catalog)
 - `GET /api/items/category-suggest?title=...` (category inference by title)
-- `GET /api/items/matches/{id}`
+- `GET /api/items/matches/{id}` (public-safe response, no owner identifiers)
+- `GET /api/items/internal/matches/{id}` (internal bot-only, includes owner ids for notifications)
 - `GET /api/items/admin/items` (requires Telegram-linked admin/moderator session)
 - `POST /api/items/admin/items/{id}/moderate` (approve/reject/flag/unflag)
 - `POST /api/items/admin/items/{id}/verify`
@@ -128,7 +129,7 @@ The codebase is intentionally modular for hackathon speed:
    docker compose up --build
    ```
 5. Open:
-   - Web UI: `http://localhost`
+   - Web UI: `http://localhost` (or `http://localhost:${WEB_PORT}` if overridden)
    - Backend docs: `http://localhost/api/docs` (proxied)
 
 ### Start Telegram bot (optional)

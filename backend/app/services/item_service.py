@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile
 
 from app.models.item import Item, ItemLifecycle, ItemStatus, ModerationStatus
 from app.models.claim import Claim, ClaimStatus
-from app.schemas.item import ItemCreate, ItemUpdate, MatchResult
+from app.schemas.item import InternalMatchResult, ItemCreate, ItemUpdate, MatchResult
 from app.core.config import get_settings
 from app.services.matching import score_match_detailed
 from app.services.catalog import CATEGORY_CATALOG, infer_category
@@ -338,7 +338,7 @@ class ItemService:
             shared_target_contact=shared_target_contact,
         )
 
-    def matches_for_item(self, item: Item, limit: int = 5) -> list[MatchResult]:
+    def matches_for_item(self, item: Item, limit: int = 5, include_telegram_user_id: bool = False) -> list[MatchResult]:
         if item.lifecycle != ItemLifecycle.ACTIVE or item.moderation_status != ModerationStatus.APPROVED:
             return []
 
@@ -369,8 +369,9 @@ class ItemService:
                 scored.append((candidate, details))
 
         scored.sort(key=lambda pair: pair[1].score, reverse=True)
+        result_cls = InternalMatchResult if include_telegram_user_id else MatchResult
         return [
-            MatchResult(
+            result_cls(
                 id=c.id,
                 title=c.title,
                 status=c.status,
