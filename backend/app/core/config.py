@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     create_rate_limit_max_items: int = 5
     web_session_ttl_days: int = 30
     web_link_code_ttl_minutes: int = 10
+    web_session_cookie_secure: bool = False
+    web_session_cookie_samesite: str = "lax"
+    internal_api_token: str = "change-me-internal-token"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

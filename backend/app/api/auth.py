@@ -24,17 +24,28 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _set_session_cookie(response: Response, session_id: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key="lfb_session",
+        value=session_id,
+        httponly=True,
+        samesite=settings.web_session_cookie_samesite,
+        secure=settings.web_session_cookie_secure,
+        max_age=60 * 60 * 24 * settings.web_session_ttl_days,
+    )
+
+
 @router.post("/session", response_model=SessionResponse)
 def create_session(response: Response, db: Session = Depends(get_db)) -> SessionResponse:
     session = create_web_session(db)
-    response.set_cookie(
-        key="lfb_session",
-        value=session.id,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        max_age=60 * 60 * 24 * get_settings().web_session_ttl_days,
-    )
+    _set_session_cookie(response, session.id)
     return SessionResponse(session_id=session.id, expires_at=session.expires_at)
 
 
@@ -77,21 +88,14 @@ def create_link_code(
     db.commit()
     db.refresh(session)
     if created:
-        response.set_cookie(
-            key="lfb_session",
-            value=session.id,
-            httponly=True,
-            samesite="lax",
-            secure=False,
-            max_age=60 * 60 * 24 * settings.web_session_ttl_days,
-        )
+        _set_session_cookie(response, session.id)
     return LinkCodeResponse(code=code, expires_at=expires_at)
 
 
 @router.post("/link/confirm", response_model=WhoAmIResponse)
 def confirm_link(payload: LinkConfirmRequest, db: Session = Depends(get_db)) -> WhoAmIResponse:
     session = db.scalar(select(WebAuthSession).where(WebAuthSession.link_code == payload.code.upper()))
-    if not session or not session.link_code_expires_at or session.link_code_expires_at < _now():
+    if not session or not session.link_code_expires_at or _as_utc(session.link_code_expires_at) < _now():
         raise HTTPException(status_code=404, detail="Link code is invalid or expired")
 
     session.telegram_user_id = payload.telegram_user_id

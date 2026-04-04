@@ -14,6 +14,12 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def generate_session_id() -> str:
     return token_hex(24)
 
@@ -43,7 +49,7 @@ def get_session_from_cookie(
     session = db.get(WebAuthSession, session_id)
     if not session:
         return None
-    if session.expires_at <= _now():
+    if _as_utc(session.expires_at) <= _now():
         return None
     return session
 
@@ -93,6 +99,16 @@ def require_admin_or_moderator(
     if settings.allow_admin_secret_fallback and x_admin_secret and x_admin_secret == settings.admin_secret:
         return AdminRole.ADMIN
     raise HTTPException(status_code=403, detail="Admin access denied")
+
+
+
+
+def require_internal_access(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> None:
+    settings = get_settings()
+    if not settings.internal_api_token:
+        raise HTTPException(status_code=503, detail="Internal API token is not configured")
+    if x_internal_token != settings.internal_api_token:
+        raise HTTPException(status_code=403, detail="Internal API access denied")
 
 
 def require_admin(

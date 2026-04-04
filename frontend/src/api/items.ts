@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import { Item, NewItemPayload, ItemStatus, MatchResult, ItemLifecycle } from '../types/item'
+import { cachedCall, invalidateCache } from './cache'
 
 export type TelegramIdentity = {
   telegram_user_id: number
@@ -46,8 +47,10 @@ export const createWebSession = async () => {
 }
 
 export const getAuthMe = async () => {
-  const response = await apiClient.get<WhoAmI>('/auth/me')
-  return response.data
+  return cachedCall('auth:me', 15_000, async () => {
+    const response = await apiClient.get<WhoAmI>('/auth/me')
+    return response.data
+  })
 }
 
 export const generateLinkCode = async () => {
@@ -56,8 +59,10 @@ export const generateLinkCode = async () => {
 }
 
 export const fetchCategories = async () => {
-  const response = await apiClient.get<string[]>('/items/categories')
-  return response.data
+  return cachedCall('items:categories', 60_000, async () => {
+    const response = await apiClient.get<string[]>('/items/categories')
+    return response.data
+  })
 }
 
 export const suggestCategory = async (title: string) => {
@@ -69,6 +74,7 @@ export const suggestCategory = async (title: string) => {
 
 export const unlinkTelegram = async () => {
   await apiClient.post('/auth/unlink')
+  invalidateCache('auth:')
 }
 
 export const uploadItemImage = async (file: File) => {
@@ -133,15 +139,20 @@ export const lifecycleItemAdmin = async (itemId: number, action: 'resolve' | 're
 
 export const createClaim = async (source_item_id: number, target_item_id: number, requester_telegram_user_id?: number, claim_message?: string) => {
   const response = await apiClient.post('/items/claim-requests', { source_item_id, target_item_id, requester_telegram_user_id, claim_message })
+  invalidateCache('claims:')
   return response.data
 }
 
 export const listClaims = async (telegram_user_id?: number, direction: 'all' | 'incoming' | 'outgoing' = 'all') => {
-  const response = await apiClient.get('/items/claim-requests', { params: { telegram_user_id, direction } })
-  return response.data
+  const key = `claims:${direction}:${telegram_user_id ?? 'session'}`
+  return cachedCall(key, 7_500, async () => {
+    const response = await apiClient.get('/items/claim-requests', { params: { telegram_user_id, direction } })
+    return response.data
+  })
 }
 
 export const claimAction = async (claimId: number, action: 'approve' | 'reject' | 'cancel' | 'complete' | 'not-match', telegram_user_id?: number, note?: string) => {
   const response = await apiClient.post(`/items/claim-requests/${claimId}/${action}`, { telegram_user_id, note })
+  invalidateCache('claims:')
   return response.data
 }

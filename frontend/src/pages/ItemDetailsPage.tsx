@@ -54,8 +54,8 @@ export const ItemDetailsPage = () => {
           <div className="kpi-grid">
             <div className="kpi"><strong>{item.category}</strong><span className="subtle">Category</span></div>
             <div className="kpi"><strong>{item.location}</strong><span className="subtle">Location</span></div>
-            <div className="kpi"><strong>{item.contact_name}</strong><span className="subtle">Contact</span></div>
-            <div className="kpi"><strong>{item.telegram_username || 'N/A'}</strong><span className="subtle">Telegram</span></div>
+            <div className="kpi"><strong>{item.contact_name || 'Hidden until approved claim'}</strong><span className="subtle">Contact</span></div>
+            <div className="kpi"><strong>{item.telegram_username || 'Hidden'}</strong><span className="subtle">Telegram</span></div>
           </div>
         </SectionCard>
 

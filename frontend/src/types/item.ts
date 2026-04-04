@@ -16,7 +16,7 @@ export interface Item {
   moderated_by?: string | null
   is_verified: boolean
   verified_at?: string | null
-  contact_name: string
+  contact_name?: string | null
   telegram_username?: string | null
   telegram_user_id?: number | null
   owner_telegram_user_id?: number | null
