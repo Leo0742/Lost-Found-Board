@@ -73,7 +73,7 @@ def cleanup_stale_temp_uploads(now: datetime | None = None) -> int:
     return removed
 
 
-def cleanup_finalized_orphans(now: datetime | None = None) -> int:
+def cleanup_finalized_orphans(now: datetime | None = None, *, batch_limit: int = 200, max_scan: int = 5000) -> int:
     """Delete old finalized media files that no longer belong to an item record."""
     from sqlalchemy import select
 
@@ -92,8 +92,13 @@ def cleanup_finalized_orphans(now: datetime | None = None) -> int:
         logger.info("Skipping finalized orphan cleanup: %s", exc)
         return 0
 
-    removed = 0
+    removable: list[tuple[float, Path]] = []
+    scanned = 0
     for file in root.iterdir():
+        scanned += 1
+        if scanned > max_scan:
+            logger.info("Finalized orphan cleanup scan cap reached (%s files).", max_scan)
+            break
         if not file.is_file() or file.parent == tmp_dir:
             continue
         rel_path = file.name
@@ -102,6 +107,10 @@ def cleanup_finalized_orphans(now: datetime | None = None) -> int:
         modified = datetime.fromtimestamp(file.stat().st_mtime, tz=UTC)
         if modified > cutoff:
             continue
+        removable.append((file.stat().st_mtime, file))
+
+    removed = 0
+    for _, file in sorted(removable, key=lambda row: row[0])[:batch_limit]:
         try:
             file.unlink()
             removed += 1

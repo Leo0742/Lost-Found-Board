@@ -144,3 +144,62 @@ def test_admin_bulk_actions_and_observability(client, db_session_factory, monkey
     payload = observability.json()
     assert "duplicate_flags_24h" in payload
     assert "cleanup" in payload
+
+
+def test_bulk_action_isolates_unexpected_item_errors(client, db_session_factory, monkeypatch):
+    monkeypatch.setenv("ADMIN_TELEGRAM_USER_IDS", "3001")
+    get_settings.cache_clear()
+
+    session_id, csrf = _create_web_session(db_session_factory, telegram_user_id=3001)
+    cookies = {"lfb_session": session_id}
+    headers = {"X-CSRF-Token": csrf}
+
+    one = client.post("/api/items", json=_payload("Bulk isolate one", user_id=1111)).json()
+    two = client.post("/api/items", json=_payload("Bulk isolate two", user_id=1112)).json()
+
+    from app.services.item_service import ItemService
+
+    original = ItemService.moderate_item
+
+    def flaky(self, item, action, moderator, reason=None):
+        if item.id == two["id"]:
+            raise RuntimeError("unexpected")
+        return original(self, item, action, moderator, reason)
+
+    monkeypatch.setattr(ItemService, "moderate_item", flaky)
+    response = client.post(
+        "/api/items/admin/items/bulk-moderate",
+        json={"item_ids": [one["id"], two["id"]], "action": "approve"},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["succeeded"] == 1
+    assert payload["failed"] == 1
+    failed = [row for row in payload["results"] if not row["success"]]
+    assert failed and failed[0]["detail"] == "Unexpected server error"
+
+
+def test_admin_items_supports_suspicious_only_filter(client, db_session_factory, monkeypatch):
+    monkeypatch.setenv("ADMIN_TELEGRAM_USER_IDS", "3001")
+    get_settings.cache_clear()
+
+    session_id, csrf = _create_web_session(db_session_factory, telegram_user_id=3001)
+    cookies = {"lfb_session": session_id}
+    headers = {"X-CSRF-Token": csrf}
+
+    flagged = client.post("/api/items", json=_payload("Suspicious item", user_id=1200)).json()
+    normal = client.post("/api/items", json=_payload("Normal item", user_id=1201)).json()
+    client.post(
+        f"/api/items/admin/items/{flagged['id']}/moderate",
+        json={"action": "flag", "reason": "flagged by moderator"},
+        cookies=cookies,
+        headers=headers,
+    )
+
+    response = client.get("/api/items/admin/items", params={"suspicious_only": True}, cookies=cookies, headers=headers)
+    assert response.status_code == 200
+    item_ids = {row["id"] for row in response.json()}
+    assert flagged["id"] in item_ids
+    assert normal["id"] not in item_ids

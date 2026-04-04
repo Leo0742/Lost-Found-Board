@@ -1,7 +1,9 @@
 import logging
 import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI, status
 from fastapi.responses import JSONResponse
@@ -24,16 +26,43 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class MaintenanceStep:
+    name: str
+    interval_seconds: int
+    runner: Callable[[], int | None]
+    success_log_template: str
+
+
+def _run_maintenance_step(step: MaintenanceStep) -> None:
+    try:
+        removed = step.runner()
+        if removed:
+            logger.info(step.success_log_template, removed)
+    except Exception:
+        logger.exception("Maintenance step '%s' failed.", step.name)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     cleanup_task: asyncio.Task | None = None
     ensure_media_dirs()
-    cleaned = cleanup_stale_temp_uploads()
-    if cleaned:
-        logger.info("Removed %s stale temporary media files on startup.", cleaned)
-    finalized_removed = cleanup_finalized_orphans()
-    if finalized_removed:
-        logger.info("Removed %s orphaned finalized media files on startup.", finalized_removed)
+    _run_maintenance_step(
+        MaintenanceStep(
+            name="startup_temp_media_cleanup",
+            interval_seconds=0,
+            runner=cleanup_stale_temp_uploads,
+            success_log_template="Removed %s stale temporary media files on startup.",
+        )
+    )
+    _run_maintenance_step(
+        MaintenanceStep(
+            name="startup_finalized_orphan_cleanup",
+            interval_seconds=0,
+            runner=cleanup_finalized_orphans,
+            success_log_template="Removed %s orphaned finalized media files on startup.",
+        )
+    )
 
     try:
         with SessionLocal() as db:
@@ -57,36 +86,93 @@ async def lifespan(_: FastAPI):
     if settings.strict_internal_token and not settings.is_dev_env and not settings.has_secure_internal_token:
         raise RuntimeError("INTERNAL_API_TOKEN must be set to a non-default value outside dev/test environments.")
 
-    async def _periodic_temp_cleanup() -> None:
-        interval_minutes = settings.media_cleanup_interval_minutes
-        if interval_minutes <= 0:
-            logger.info("Periodic media temp cleanup disabled (MEDIA_CLEANUP_INTERVAL_MINUTES<=0).")
-            return
-        while True:
-            await asyncio.sleep(interval_minutes * 60)
-            removed = cleanup_stale_temp_uploads()
-            if removed:
-                logger.info("Periodic cleanup removed %s stale temp media files.", removed)
-            orphans = cleanup_finalized_orphans()
-            if orphans:
-                logger.info("Periodic cleanup removed %s orphaned finalized media files.", orphans)
-            try:
-                with SessionLocal() as db:
-                    expired = cleanup_expired_events(db, retention_days=settings.anti_abuse_event_retention_days)
-                    expired_audit = cleanup_expired_audit_events(db, retention_days=settings.audit_event_retention_days)
-                if expired:
-                    logger.info("Periodic cleanup removed %s expired anti-abuse events.", expired)
-                if expired_audit:
-                    logger.info("Periodic cleanup removed %s expired audit events.", expired_audit)
-            except Exception as exc:
-                logger.info("Skipping event retention cleanup: %s", exc)
+    async def _periodic_maintenance() -> None:
+        steps: list[MaintenanceStep] = []
+        temp_interval = settings.media_cleanup_interval_minutes * 60
+        orphan_interval = settings.media_orphan_cleanup_interval_minutes * 60
+        retention_interval = settings.event_retention_cleanup_interval_minutes * 60
 
-    cleanup_task = asyncio.create_task(_periodic_temp_cleanup())
+        if temp_interval <= 0:
+            logger.info("Periodic media temp cleanup disabled (MEDIA_CLEANUP_INTERVAL_MINUTES<=0).")
+        else:
+            steps.append(
+                MaintenanceStep(
+                    name="temp_media_cleanup",
+                    interval_seconds=temp_interval,
+                    runner=cleanup_stale_temp_uploads,
+                    success_log_template="Periodic cleanup removed %s stale temp media files.",
+                )
+            )
+        if orphan_interval <= 0:
+            logger.info("Periodic finalized orphan cleanup disabled (MEDIA_ORPHAN_CLEANUP_INTERVAL_MINUTES<=0).")
+        else:
+            steps.append(
+                MaintenanceStep(
+                    name="finalized_orphan_cleanup",
+                    interval_seconds=orphan_interval,
+                    runner=cleanup_finalized_orphans,
+                    success_log_template="Periodic cleanup removed %s orphaned finalized media files.",
+                )
+            )
+        if retention_interval <= 0:
+            logger.info("Periodic event retention cleanup disabled (EVENT_RETENTION_CLEANUP_INTERVAL_MINUTES<=0).")
+        else:
+            steps.extend(
+                [
+                    MaintenanceStep(
+                        name="anti_abuse_retention_cleanup",
+                        interval_seconds=retention_interval,
+                        runner=lambda: _cleanup_anti_abuse_events(),
+                        success_log_template="Periodic cleanup removed %s expired anti-abuse events.",
+                    ),
+                    MaintenanceStep(
+                        name="audit_retention_cleanup",
+                        interval_seconds=retention_interval,
+                        runner=lambda: _cleanup_audit_events(),
+                        success_log_template="Periodic cleanup removed %s expired audit events.",
+                    ),
+                ]
+            )
+
+        if not steps:
+            logger.info("All periodic maintenance steps disabled by configuration.")
+            return
+
+        next_run = {step.name: asyncio.get_running_loop().time() + step.interval_seconds for step in steps}
+        while True:
+            try:
+                now = asyncio.get_running_loop().time()
+                sleep_for = max(1.0, min(next_run.values()) - now)
+                await asyncio.sleep(sleep_for)
+                now = asyncio.get_running_loop().time()
+                for step in steps:
+                    if now < next_run[step.name]:
+                        continue
+                    _run_maintenance_step(step)
+                    next_run[step.name] = now + step.interval_seconds
+            except asyncio.CancelledError:
+                logger.info("Periodic maintenance task cancelled.")
+                raise
+            except Exception:
+                logger.exception("Unexpected periodic maintenance loop failure; continuing.")
+                await asyncio.sleep(2)
+
+    def _cleanup_anti_abuse_events() -> int:
+        with SessionLocal() as db:
+            return cleanup_expired_events(db, retention_days=settings.anti_abuse_event_retention_days)
+
+    def _cleanup_audit_events() -> int:
+        with SessionLocal() as db:
+            return cleanup_expired_audit_events(db, retention_days=settings.audit_event_retention_days)
+
+    cleanup_task = asyncio.create_task(_periodic_maintenance())
     try:
         yield
     finally:
         if cleanup_task:
             cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
