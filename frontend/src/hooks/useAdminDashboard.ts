@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   bulkLifecycleItems,
   bulkModerateItems,
@@ -61,7 +61,7 @@ const defaultItemFilters: ItemFilters = {
   sortOrder: 'desc',
   createdFrom: '',
   createdTo: '',
-  limit: 100,
+  limit: 50,
   suspiciousOnly: false,
 }
 
@@ -88,12 +88,22 @@ export const useAdminDashboard = () => {
   const [auditOffset, setAuditOffset] = useState(0)
   const [loadingItems, setLoadingItems] = useState(false)
   const [loadingAudit, setLoadingAudit] = useState(false)
+  const [loadingStats, setLoadingStats] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [itemError, setItemError] = useState<string | null>(null)
   const [auditError, setAuditError] = useState<string | null>(null)
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [queueSummaryError, setQueueSummaryError] = useState<string | null>(null)
+  const [observabilityError, setObservabilityError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [actionWarning, setActionWarning] = useState<string | null>(null)
+  const signalsRef = useRef<Record<number, ModerationSignal>>({})
 
-  const loadItems = useCallback(async (nextFilters?: ItemFilters, nextOffset?: number) => {
+  useEffect(() => {
+    signalsRef.current = signals
+  }, [signals])
+
+  const loadItems = useCallback(async (nextFilters?: ItemFilters, nextOffset?: number, options?: { forceSignals?: boolean }) => {
     const effectiveFilters = nextFilters ?? itemFilters
     const effectiveOffset = nextOffset ?? itemsOffset
     setLoadingItems(true)
@@ -116,8 +126,11 @@ export const useAdminDashboard = () => {
       })
       setItems(rows)
       const ids = rows.map((item) => item.id)
-      const signalRows = ids.length ? await fetchModerationSignals(ids) : []
-      setSignals((prev) => ({ ...prev, ...Object.fromEntries(signalRows.map((row) => [row.item_id, row])) }))
+      const signalIds = options?.forceSignals ? ids : ids.filter((id) => !signalsRef.current[id])
+      if (signalIds.length) {
+        const signalRows = await fetchModerationSignals(signalIds)
+        setSignals((prev) => ({ ...prev, ...Object.fromEntries(signalRows.map((row) => [row.item_id, row])) }))
+      }
       setItemError(null)
     } catch {
       setItemError('Could not load moderation queue.')
@@ -150,76 +163,103 @@ export const useAdminDashboard = () => {
   }, [auditFilters, auditOffset])
 
   const loadStats = useCallback(async () => {
-    const [nextStats, nextQueueSummary, nextObservability] = await Promise.all([
+    setLoadingStats(true)
+    const [statsResult, queueResult, observabilityResult] = await Promise.allSettled([
       fetchModerationStats(),
       fetchAdminQueueSummary(),
       fetchAdminObservability(),
     ])
-    setStats(nextStats)
-    setQueueSummary(nextQueueSummary)
-    setObservability(nextObservability)
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value)
+      setStatsError(null)
+    } else {
+      setStatsError('Could not load moderation stats.')
+    }
+    if (queueResult.status === 'fulfilled') {
+      setQueueSummary(queueResult.value)
+      setQueueSummaryError(null)
+    } else {
+      setQueueSummaryError('Could not load queue summary.')
+    }
+    if (observabilityResult.status === 'fulfilled') {
+      setObservability(observabilityResult.value)
+      setObservabilityError(null)
+    } else {
+      setObservabilityError('Could not load observability metrics.')
+    }
+    setLoadingStats(false)
   }, [])
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadItems(undefined, 0), loadAudit(0), loadStats()])
+    await Promise.all([loadItems(undefined, 0, { forceSignals: true }), loadAudit(0), loadStats()])
     setItemsOffset(0)
     setAuditOffset(0)
   }, [loadAudit, loadItems, loadStats])
 
+  const collectRefreshWarnings = useCallback(async (refreshers: Record<string, () => Promise<unknown>>) => {
+    const entries = Object.entries(refreshers)
+    const settled = await Promise.allSettled(entries.map(([, fn]) => fn()))
+    return settled
+      .map((result, idx) => (result.status === 'rejected' ? entries[idx][0] : null))
+      .filter((label): label is string => Boolean(label))
+  }, [])
+
   const runSingleItemAction = useCallback(async (itemId: number, action: () => Promise<Item>) => {
     setActionLoading(true)
+    setActionWarning(null)
     try {
       const updated = await action()
       setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
-      const refreshWarnings: string[] = []
-      try {
-        const refreshedSignals = await fetchModerationSignals([itemId])
-        if (refreshedSignals[0]) {
-          setSignals((prev) => ({ ...prev, [itemId]: refreshedSignals[0] }))
-        }
-      } catch {
-        refreshWarnings.push('signal refresh failed')
+      const refreshWarnings = await collectRefreshWarnings({
+        'signal refresh failed': async () => {
+          const refreshedSignals = await fetchModerationSignals([itemId])
+          if (refreshedSignals[0]) {
+            setSignals((prev) => ({ ...prev, [itemId]: refreshedSignals[0] }))
+          }
+        },
+        'stats refresh failed': loadStats,
+        'audit refresh failed': async () => {
+          await loadAudit(0)
+          setAuditOffset(0)
+        },
+      })
+      setActionMessage(`Action completed for #${itemId}.`)
+      if (refreshWarnings.length) {
+        setActionWarning(`Action succeeded for #${itemId}, but ${refreshWarnings.join(', ')}.`)
       }
-      try {
-        await Promise.all([loadStats(), loadAudit(0)])
-        setAuditOffset(0)
-      } catch {
-        refreshWarnings.push('dashboard refresh failed')
-      }
-      const suffix = refreshWarnings.length ? ` (${refreshWarnings.join('; ')})` : ''
-      setActionMessage(`Action completed for #${itemId}.${suffix}`)
     } catch {
       setActionMessage(`Admin action failed for #${itemId}.`)
     } finally {
       setActionLoading(false)
     }
-  }, [loadAudit, loadStats])
+  }, [collectRefreshWarnings, loadAudit, loadStats])
 
   const runBulkAction = useCallback(async (actionLabel: string, action: () => Promise<BulkActionResponse>) => {
     setActionLoading(true)
+    setActionWarning(null)
     try {
       const result = await action()
-      const refreshFailures: string[] = []
-      await Promise.allSettled([
-        loadItems(),
-        loadStats(),
-        loadAudit(0),
-      ]).then((results) => {
-        if (results[0].status === 'rejected') refreshFailures.push('queue refresh failed')
-        if (results[1].status === 'rejected') refreshFailures.push('stats refresh failed')
-        if (results[2].status === 'rejected') refreshFailures.push('audit refresh failed')
+      const refreshFailures = await collectRefreshWarnings({
+        'queue refresh failed': () => loadItems(),
+        'stats refresh failed': loadStats,
+        'audit refresh failed': async () => {
+          await loadAudit(0)
+          setAuditOffset(0)
+        },
       })
       setAuditOffset(0)
       const failedIds = result.results.filter((row) => !row.success).map((row) => row.item_id)
       const failedSegment = failedIds.length ? ` Failed: ${failedIds.slice(0, 8).join(', ')}` : ''
-      const refreshSegment = refreshFailures.length ? ` Refresh warnings: ${refreshFailures.join(', ')}.` : ''
-      setActionMessage(`${actionLabel}: ${result.succeeded}/${result.processed} succeeded.${failedSegment}${refreshSegment}`)
+      setActionMessage(`${actionLabel}: ${result.succeeded}/${result.processed} succeeded.${failedSegment}`)
+      if (refreshFailures.length) {
+        setActionWarning(`${actionLabel} succeeded, but ${refreshFailures.join(', ')}.`)
+      }
     } catch {
       setActionMessage(`${actionLabel} failed.`)
     } finally {
       setActionLoading(false)
     }
-  }, [loadAudit, loadItems, loadStats])
+  }, [collectRefreshWarnings, loadAudit, loadItems, loadStats])
 
   const applyPreset = useCallback(async (preset: QueuePreset) => {
     const nextFilters: ItemFilters = {
@@ -277,10 +317,15 @@ export const useAdminDashboard = () => {
     setAuditOffset,
     loadingItems,
     loadingAudit,
+    loadingStats,
     actionLoading,
     itemError,
     auditError,
+    statsError,
+    queueSummaryError,
+    observabilityError,
     actionMessage,
+    actionWarning,
     setActionMessage,
     loadItems,
     loadAudit,

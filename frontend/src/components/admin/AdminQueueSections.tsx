@@ -16,6 +16,7 @@ export const FlaggedQueueSection = ({ items, signals, onApprove, onReject, onUnf
     {items.length === 0 ? <p className="subtle">No flagged reports.</p> : items.map((item) => (
       <article className="card stack" key={item.id}>
         <strong>#{item.id} {item.title}</strong>
+        <p className="subtle">Risk context from flags, duplicate pressure, claims, and blocked abuse events.</p>
         <ModerationSignals signal={signals[item.id]} />
         <div className="actions-row">
           <button onClick={() => onApprove(item.id)}>Approve</button>
