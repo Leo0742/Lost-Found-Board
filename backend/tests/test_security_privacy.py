@@ -8,13 +8,14 @@ def _create_session_cookie(db_session_factory, telegram_user_id: int | None = No
     with db_session_factory() as db:
         session = WebAuthSession(
             id=generate_session_id(),
+            csrf_token=generate_session_id(),
             telegram_user_id=telegram_user_id,
             telegram_username="tester" if telegram_user_id else None,
             expires_at=datetime.now(UTC) + timedelta(days=7),
         )
         db.add(session)
         db.commit()
-        return {"lfb_session": session.id}
+        return {"lfb_session": session.id}, {"X-CSRF-Token": session.csrf_token}
 
 
 def _create_item(client, **overrides):
@@ -62,7 +63,7 @@ def test_me_endpoint_requires_session_and_returns_owner_data(client, db_session_
     no_auth = client.get("/api/items/me")
     assert no_auth.status_code == 401
 
-    cookies = _create_session_cookie(db_session_factory, telegram_user_id=111)
+    cookies, _ = _create_session_cookie(db_session_factory, telegram_user_id=111)
     me = client.get("/api/items/me", cookies=cookies)
     assert me.status_code == 200
     assert me.json()[0]["contact_name"] == "Alice"
@@ -71,8 +72,8 @@ def test_me_endpoint_requires_session_and_returns_owner_data(client, db_session_
 def test_public_detail_blocks_non_public_records(client, db_session_factory):
     item = _create_item(client, telegram_user_id=222)
 
-    cookies = _create_session_cookie(db_session_factory, telegram_user_id=222)
-    deleted = client.post(f"/api/items/{item['id']}/delete", json={}, cookies=cookies)
+    cookies, headers = _create_session_cookie(db_session_factory, telegram_user_id=222)
+    deleted = client.post(f"/api/items/{item['id']}/delete", json={}, cookies=cookies, headers=headers)
     assert deleted.status_code == 200
 
     public_detail = client.get(f"/api/items/{item['id']}")
@@ -86,13 +87,14 @@ def test_claim_contact_shared_only_after_approval(client, db_session_factory):
     source = _create_item(client, telegram_user_id=100, status="lost")
     target = _create_item(client, telegram_user_id=200, status="found")
 
-    requester_cookies = _create_session_cookie(db_session_factory, telegram_user_id=100)
-    owner_cookies = _create_session_cookie(db_session_factory, telegram_user_id=200)
+    requester_cookies, requester_headers = _create_session_cookie(db_session_factory, telegram_user_id=100)
+    owner_cookies, owner_headers = _create_session_cookie(db_session_factory, telegram_user_id=200)
 
     create_claim_resp = client.post(
         "/api/items/claim-requests",
         json={"source_item_id": source["id"], "target_item_id": target["id"]},
         cookies=requester_cookies,
+        headers=requester_headers,
     )
     assert create_claim_resp.status_code == 200
     claim_id = create_claim_resp.json()["id"]
@@ -101,7 +103,7 @@ def test_claim_contact_shared_only_after_approval(client, db_session_factory):
     assert claim_before.status_code == 200
     assert claim_before.json()[0]["shared_source_contact"] is None
 
-    approved = client.post(f"/api/items/claim-requests/{claim_id}/approve", json={}, cookies=owner_cookies)
+    approved = client.post(f"/api/items/claim-requests/{claim_id}/approve", json={}, cookies=owner_cookies, headers=owner_headers)
     assert approved.status_code == 200
 
     claim_after = client.get("/api/items/claim-requests", params={"direction": "outgoing"}, cookies=requester_cookies)

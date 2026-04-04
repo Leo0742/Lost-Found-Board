@@ -36,3 +36,7 @@ class LinkConfirmRequest(BaseModel):
 class TelegramAdminAccessResponse(BaseModel):
     admin_access: bool
     role: str | None = None
+
+
+class CsrfTokenResponse(BaseModel):
+    csrf_token: str

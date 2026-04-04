@@ -7,12 +7,14 @@ class Settings(BaseSettings):
     app_name: str = "Lost & Found Board API"
     app_env: str = "dev"
     database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/lost_found"
-    cors_origins: str = "*"
+    cors_origins: str = ""
+    cors_allow_credentials: bool = True
     embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     semantic_matching_enabled: bool = True
     semantic_strict_mode: bool = False
     embedding_warmup_on_startup: bool = True
     media_tmp_ttl_hours: int = 24
+    media_cleanup_interval_minutes: int = 60
     media_root: str = "/app/media"
     media_url_prefix: str = "/media"
     media_max_bytes: int = 5 * 1024 * 1024
@@ -20,6 +22,7 @@ class Settings(BaseSettings):
     allow_admin_secret_fallback: bool = False
     admin_telegram_user_ids: str = ""
     admin_telegram_usernames: str = ""
+    admin_username_bootstrap_enabled: bool = False
     create_rate_limit_window_minutes: int = 10
     create_rate_limit_max_items: int = 5
     web_session_ttl_days: int = 30
@@ -51,6 +54,20 @@ class Settings(BaseSettings):
             if value:
                 usernames.add(value)
         return usernames
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        parsed = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        if parsed:
+            return parsed
+        if self.app_env.lower() == "dev":
+            return [
+                "http://localhost",
+                "http://localhost:5173",
+                "http://127.0.0.1",
+                "http://127.0.0.1:5173",
+            ]
+        return []
 
 
 @lru_cache

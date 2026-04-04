@@ -4,12 +4,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import create_web_session, generate_link_code, get_admin_role_for_identity, get_admin_role_for_session, get_session_from_cookie
+from app.core.auth import (
+    create_web_session,
+    ensure_session_csrf_token,
+    generate_link_code,
+    get_admin_role_for_identity,
+    get_admin_role_for_session,
+    get_session_from_cookie,
+    require_csrf_for_session,
+)
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.auth_session import WebAuthSession
 from app.schemas.auth import (
     LinkCodeResponse,
+    CsrfTokenResponse,
     LinkConfirmRequest,
     SessionResponse,
     TelegramAdminAccessResponse,
@@ -51,9 +60,13 @@ def create_session(response: Response, db: Session = Depends(get_db)) -> Session
 
 
 @router.get("/me", response_model=WhoAmIResponse)
-def whoami(session: WebAuthSession | None = Depends(get_session_from_cookie)) -> WhoAmIResponse:
+def whoami(
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    db: Session = Depends(get_db),
+) -> WhoAmIResponse:
     if not session or not session.telegram_user_id:
         return WhoAmIResponse(linked=False, identity=None, admin_access=False, role=None)
+    ensure_session_csrf_token(db, session)
     role = get_admin_role_for_session(session)
     return WhoAmIResponse(
         linked=True,
@@ -67,9 +80,26 @@ def whoami(session: WebAuthSession | None = Depends(get_session_from_cookie)) ->
     )
 
 
+@router.get("/csrf", response_model=CsrfTokenResponse)
+def get_csrf_token(
+    response: Response,
+    db: Session = Depends(get_db),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+) -> CsrfTokenResponse:
+    created = False
+    if not session:
+        session = create_web_session(db)
+        created = True
+    token = ensure_session_csrf_token(db, session)
+    if created:
+        _set_session_cookie(response, session.id)
+    return CsrfTokenResponse(csrf_token=token)
+
+
 @router.post("/link-code", response_model=LinkCodeResponse)
 def create_link_code(
     response: Response,
+    _: None = Depends(require_csrf_for_session),
     db: Session = Depends(get_db),
     session: WebAuthSession | None = Depends(get_session_from_cookie),
 ) -> LinkCodeResponse:
@@ -129,7 +159,12 @@ def confirm_link(payload: LinkConfirmRequest, db: Session = Depends(get_db)) -> 
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response, session: WebAuthSession | None = Depends(get_session_from_cookie), db: Session = Depends(get_db)) -> None:
+def logout(
+    response: Response,
+    _: None = Depends(require_csrf_for_session),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    db: Session = Depends(get_db),
+) -> None:
     if session:
         session.telegram_user_id = None
         session.telegram_username = None
@@ -141,7 +176,11 @@ def logout(response: Response, session: WebAuthSession | None = Depends(get_sess
 
 
 @router.post("/unlink", status_code=status.HTTP_204_NO_CONTENT)
-def unlink_telegram(session: WebAuthSession | None = Depends(get_session_from_cookie), db: Session = Depends(get_db)) -> None:
+def unlink_telegram(
+    _: None = Depends(require_csrf_for_session),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    db: Session = Depends(get_db),
+) -> None:
     if not session:
         return
     actor_id = session.telegram_user_id

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from secrets import token_hex
 
-from fastapi import Cookie, Depends, Header, HTTPException
+from fastapi import Cookie, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -28,16 +28,31 @@ def generate_link_code() -> str:
     return token_hex(3).upper()
 
 
+def generate_csrf_token() -> str:
+    return token_hex(32)
+
+
 def create_web_session(db: Session) -> WebAuthSession:
     settings = get_settings()
     session = WebAuthSession(
         id=generate_session_id(),
+        csrf_token=generate_csrf_token(),
         expires_at=_now() + timedelta(days=settings.web_session_ttl_days),
     )
     db.add(session)
     db.commit()
     db.refresh(session)
     return session
+
+
+def ensure_session_csrf_token(db: Session, session: WebAuthSession) -> str:
+    if session.csrf_token:
+        return session.csrf_token
+    session.csrf_token = generate_csrf_token()
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session.csrf_token
 
 
 def get_session_from_cookie(
@@ -76,6 +91,8 @@ def get_admin_role_for_identity(telegram_user_id: int | None, telegram_username:
     settings = get_settings()
     if telegram_user_id and telegram_user_id in settings.admin_telegram_user_id_set:
         return AdminRole.ADMIN
+    if not settings.admin_username_bootstrap_enabled:
+        return None
     username = _normalized_username(telegram_username)
     if username and username in settings.admin_telegram_username_set:
         return AdminRole.MODERATOR
@@ -122,3 +139,22 @@ def require_admin(
     if settings.allow_admin_secret_fallback and x_admin_secret and x_admin_secret == settings.admin_secret:
         return AdminRole.ADMIN
     raise HTTPException(status_code=403, detail="Admin access denied")
+
+
+def require_csrf_for_session(
+    request: Request,
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
+    db: Session = Depends(get_db),
+    x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+) -> None:
+    """
+    Enforce CSRF only when a browser session cookie is present.
+    Internal/bot token flows without session cookies are unaffected.
+    """
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if not session:
+        return
+    expected = ensure_session_csrf_token(db, session)
+    if x_csrf_token != expected:
+        raise HTTPException(status_code=403, detail="CSRF validation failed")

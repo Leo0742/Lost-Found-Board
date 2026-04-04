@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lost_found}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -15,19 +16,23 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/lost_found}
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-true}
       APP_ENV: ${APP_ENV:-dev}
       HF_HUB_DISABLE_PROGRESS_BARS: ${HF_HUB_DISABLE_PROGRESS_BARS:-1}
       EMBEDDING_WARMUP_ON_STARTUP: ${EMBEDDING_WARMUP_ON_STARTUP:-true}
       SEMANTIC_MATCHING_ENABLED: ${SEMANTIC_MATCHING_ENABLED:-true}
       SEMANTIC_STRICT_MODE: ${SEMANTIC_STRICT_MODE:-false}
       MEDIA_TMP_TTL_HOURS: ${MEDIA_TMP_TTL_HOURS:-24}
+      MEDIA_CLEANUP_INTERVAL_MINUTES: ${MEDIA_CLEANUP_INTERVAL_MINUTES:-60}
       HF_HOME: ${HF_HOME:-/models/huggingface}
       ADMIN_SECRET: ${ADMIN_SECRET:-change-me-admin-secret}
       ADMIN_TELEGRAM_USER_IDS: ${ADMIN_TELEGRAM_USER_IDS:-}
       ADMIN_TELEGRAM_USERNAMES: ${ADMIN_TELEGRAM_USERNAMES:-}
+      ADMIN_USERNAME_BOOTSTRAP_ENABLED: ${ADMIN_USERNAME_BOOTSTRAP_ENABLED:-false}
       ALLOW_ADMIN_SECRET_FALLBACK: ${ALLOW_ADMIN_SECRET_FALLBACK:-false}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-change-me-internal-token}
       WEB_SESSION_COOKIE_SECURE: ${WEB_SESSION_COOKIE_SECURE:-false}
@@ -49,6 +54,7 @@ services:
       context: ./frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    restart: unless-stopped
     ports:
       - "${WEB_PORT:-80}:80"
     depends_on:
@@ -62,6 +68,7 @@ services:
 
   bot:
     build: ./bot
+    restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       API_BASE_URL: ${API_BASE_URL:-http://backend:8000/api}

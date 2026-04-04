@@ -160,3 +160,13 @@ class ClaimRead(BaseModel):
 class ClaimAction(BaseModel):
     telegram_user_id: int | None = None
     note: str | None = Field(default=None, max_length=255)
+
+
+class AuditEventRead(BaseModel):
+    id: int
+    event_type: str
+    actor_telegram_user_id: int | None = None
+    item_id: int | None = None
+    claim_id: int | None = None
+    details: dict = Field(default_factory=dict)
+    created_at: datetime
