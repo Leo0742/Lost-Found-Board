@@ -13,6 +13,8 @@ from app.core.config import get_settings
 from app.services.matching import score_match_detailed
 from app.services.catalog import CATEGORY_CATALOG, infer_category
 from app.services.search_utils import rank_items
+from app.services.audit import log_event
+from app.services.media import finalize_uploaded_image, is_tmp_path, remove_media_file
 
 
 class ItemService:
@@ -21,7 +23,9 @@ class ItemService:
 
     def create_item(self, payload: ItemCreate) -> Item:
         self._enforce_anti_spam(payload)
-        item = Item(**payload.model_dump())
+        normalized = payload.model_dump()
+        normalized["image_path"] = finalize_uploaded_image(normalized.get("image_path"))
+        item = Item(**normalized)
         if not item.owner_telegram_user_id and item.telegram_user_id:
             item.owner_telegram_user_id = item.telegram_user_id
         if not item.owner_telegram_username and item.telegram_username:
@@ -31,6 +35,8 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_created", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"status": item.status.value, "has_image": bool(item.image_path)})
+        self.db.commit()
         return item
 
     def _enforce_anti_spam(self, payload: ItemCreate) -> None:
@@ -85,13 +91,14 @@ class ItemService:
             raise HTTPException(status_code=400, detail=f"Image is too large (max {settings.media_max_bytes // (1024*1024)}MB).")
 
         suffix = allowed[mime]
-        safe_name = f"{uuid4().hex}{suffix}"
+        safe_name = f"tmp_{uuid4().hex}{suffix}"
         media_root = Path(settings.media_root)
-        media_root.mkdir(parents=True, exist_ok=True)
-        target = media_root / safe_name
+        temp_root = media_root / "tmp"
+        temp_root.mkdir(parents=True, exist_ok=True)
+        target = temp_root / safe_name
         target.write_bytes(raw)
         original_name = image.filename or safe_name
-        return safe_name, original_name[:255], mime
+        return f"tmp/{safe_name}", original_name[:255], mime
 
     def list_items(
         self,
@@ -146,11 +153,19 @@ class ItemService:
         return self.db.get(Item, item_id)
 
     def update_item(self, item: Item, payload: ItemUpdate) -> Item:
-        for key, value in payload.model_dump(exclude_unset=True).items():
+        data = payload.model_dump(exclude_unset=True)
+        old_image = item.image_path
+        if "image_path" in data:
+            data["image_path"] = finalize_uploaded_image(data.get("image_path"))
+        for key, value in data.items():
             setattr(item, key, value)
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        if old_image and old_image != item.image_path and is_tmp_path(old_image):
+            remove_media_file(old_image)
+        log_event(self.db, "item_updated", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"fields": sorted(data.keys())})
+        self.db.commit()
         return item
 
     def list_my_items(self, telegram_user_id: int) -> list[Item]:
@@ -173,6 +188,8 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_resolved", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id)
+        self.db.commit()
         return item
 
     def reopen(self, item: Item) -> Item:
@@ -182,14 +199,21 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_reopened", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id)
+        self.db.commit()
         return item
 
     def delete_item(self, item: Item) -> Item:
         item.lifecycle = ItemLifecycle.DELETED
         item.deleted_at = datetime.now(UTC)
+        if is_tmp_path(item.image_path):
+            remove_media_file(item.image_path)
+            item.image_path = None
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_deleted", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id)
+        self.db.commit()
         return item
 
     def moderate_item(self, item: Item, action: str, moderator: str, reason: str | None = None) -> Item:
@@ -206,6 +230,8 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_moderated", item_id=item.id, details={"action": action, "moderator": moderator, "reason": reason})
+        self.db.commit()
         return item
 
     def verify_item(self, item: Item, is_verified: bool) -> Item:
@@ -214,6 +240,8 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_verification_changed", item_id=item.id, details={"is_verified": is_verified})
+        self.db.commit()
         return item
 
     def admin_lifecycle_action(self, item: Item, action: str) -> Item:
@@ -230,6 +258,8 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
+        log_event(self.db, "item_flagged", item_id=item.id, details={"reason": reason})
+        self.db.commit()
         return item
 
     def create_claim(
@@ -262,6 +292,15 @@ class ItemService:
         self.db.add(claim)
         self.db.commit()
         self.db.refresh(claim)
+        log_event(
+            self.db,
+            "claim_created",
+            actor_telegram_user_id=claim.requester_telegram_user_id,
+            item_id=source_item.id,
+            claim_id=claim.id,
+            details={"target_item_id": target_item.id},
+        )
+        self.db.commit()
         return claim
 
     def get_claim(self, claim_id: int) -> Claim | None:
@@ -304,6 +343,14 @@ class ItemService:
         self.db.add(claim)
         self.db.commit()
         self.db.refresh(claim)
+        log_event(
+            self.db,
+            "claim_status_changed",
+            actor_telegram_user_id=claim.requester_telegram_user_id,
+            claim_id=claim.id,
+            details={"status": status.value},
+        )
+        self.db.commit()
         return claim
 
     def claim_read(self, claim: Claim, viewer_telegram_user_id: int | None = None):

@@ -772,7 +772,12 @@ async def form_photo(message: Message, state: FSMContext) -> None:
     try:
         image_data = await api.upload_item_image(file_bytes.read(), filename=f"{photo.file_id}.jpg", mime_type="image/jpeg")
     except httpx.HTTPError:
-        await message.answer("Photo upload failed. Please try another image or tap Skip Photo.", reply_markup=PHOTO_STEP_KEYBOARD)
+        await state.update_data(image_path=None, image_filename=None, image_mime_type=None)
+        await message.answer(
+            "Photo upload failed due to a temporary issue. We'll continue without photo. You can still submit now.",
+            reply_markup=PHOTO_STEP_KEYBOARD,
+        )
+        await _store_and_continue(message, state, "photo", "skipped")
         return
     await state.update_data(**image_data)
     await _store_and_continue(message, state, "photo", "uploaded")
@@ -795,6 +800,10 @@ async def review_action(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "review:submit":
         data = await state.get_data()
+        if data.get("submit_in_progress"):
+            await callback.answer("Submission already in progress…", show_alert=False)
+            return
+        await state.update_data(submit_in_progress=True)
         payload = {
             "status": data["status"],
             "title": data["title"],
@@ -819,8 +828,23 @@ async def review_action(callback: CallbackQuery, state: FSMContext) -> None:
                     reply_markup=MAIN_KEYBOARD,
                 )
                 await callback.answer()
+                await state.update_data(submit_in_progress=False)
                 return
-            raise
+            await callback.message.answer(
+                "We couldn't save the item right now. Please try Submit again in a moment.",
+                reply_markup=MAIN_KEYBOARD,
+            )
+            await state.update_data(submit_in_progress=False)
+            await callback.answer()
+            return
+        except (httpx.TimeoutException, httpx.HTTPError):
+            await callback.message.answer(
+                "Backend is temporarily unavailable. Your draft is still here; tap Submit again shortly.",
+                reply_markup=MAIN_KEYBOARD,
+            )
+            await state.update_data(submit_in_progress=False)
+            await callback.answer()
+            return
 
         await state.clear()
         await _answer_with_backend_photo_or_text(

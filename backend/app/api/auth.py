@@ -16,6 +16,7 @@ from app.schemas.auth import (
     TelegramIdentity,
     WhoAmIResponse,
 )
+from app.services.audit import log_event
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -107,6 +108,13 @@ def confirm_link(payload: LinkConfirmRequest, db: Session = Depends(get_db)) -> 
     db.add(session)
     db.commit()
     db.refresh(session)
+    log_event(
+        db,
+        "telegram_linked",
+        actor_telegram_user_id=session.telegram_user_id,
+        details={"telegram_username": session.telegram_username},
+    )
+    db.commit()
     role = get_admin_role_for_session(session)
     return WhoAmIResponse(
         linked=True,
@@ -136,6 +144,7 @@ def logout(response: Response, session: WebAuthSession | None = Depends(get_sess
 def unlink_telegram(session: WebAuthSession | None = Depends(get_session_from_cookie), db: Session = Depends(get_db)) -> None:
     if not session:
         return
+    actor_id = session.telegram_user_id
     session.telegram_user_id = None
     session.telegram_username = None
     session.telegram_display_name = None
@@ -143,6 +152,8 @@ def unlink_telegram(session: WebAuthSession | None = Depends(get_session_from_co
     session.link_code = None
     session.link_code_expires_at = None
     db.add(session)
+    db.commit()
+    log_event(db, "telegram_unlinked", actor_telegram_user_id=actor_id)
     db.commit()
 
 

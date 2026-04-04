@@ -1,15 +1,20 @@
 import logging
-import os
+
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
 from app.api.auth import router as auth_router
 from app.api.items import router as items_router
 from app.core.config import get_settings
-from app.services.matching import warmup_embedding_model
+from app.db.session import get_db
+from app.services.matching import semantic_runtime_status, warmup_embedding_model
+from app.services.media import cleanup_stale_temp_uploads, ensure_media_dirs
+from app.services.readiness import check_readiness
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -17,11 +22,19 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    os.makedirs(settings.media_root, exist_ok=True)
+    ensure_media_dirs()
+    cleaned = cleanup_stale_temp_uploads()
+    if cleaned:
+        logger.info("Removed %s stale temporary media files on startup.", cleaned)
+
     if settings.embedding_warmup_on_startup:
-        logger.info("Starting embedding model warmup.")
-        if not warmup_embedding_model():
-            logger.warning("Embedding warmup failed; app will continue with rule-based matching.")
+        warmup_embedding_model()
+    else:
+        logger.info("Semantic warmup skipped by configuration (EMBEDDING_WARMUP_ON_STARTUP=false).")
+
+    semantic = semantic_runtime_status()
+    logger.info("Semantic matching startup state: %s (%s)", semantic.state.value, semantic.detail)
+    logger.info("Internal API token configured: %s", "yes" if settings.internal_api_token else "no")
     yield
 
 
@@ -40,6 +53,14 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready(db: Session = Depends(get_db)) -> dict:
+    report = check_readiness(db)
+    if report.ready:
+        return report.as_dict()
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=report.as_dict())
 
 
 app.include_router(items_router)

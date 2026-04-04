@@ -4,6 +4,7 @@ import os
 import re
 from difflib import SequenceMatcher
 from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
 
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
@@ -20,6 +21,19 @@ except Exception:  # pragma: no cover - optional dependency fallback
 
 from app.core.config import get_settings
 from app.models.item import Item
+
+
+class SemanticState(str, Enum):
+    ENABLED = "enabled"
+    DEGRADED = "degraded"
+    DISABLED = "disabled"
+
+
+@dataclass(slots=True)
+class SemanticRuntimeStatus:
+    state: SemanticState
+    detail: str
+
 
 logger = logging.getLogger(__name__)
 
@@ -210,10 +224,29 @@ def _encoder():
 
 
 _EMBEDDING_AVAILABLE: bool | None = None
+_SEMANTIC_DETAIL: str = "semantic warmup not attempted"
+
+
+def semantic_runtime_status() -> SemanticRuntimeStatus:
+    settings = get_settings()
+    if not settings.semantic_matching_enabled:
+        return SemanticRuntimeStatus(state=SemanticState.DISABLED, detail="disabled by configuration")
+    if _EMBEDDING_AVAILABLE is True:
+        return SemanticRuntimeStatus(state=SemanticState.ENABLED, detail="semantic model loaded")
+    if _EMBEDDING_AVAILABLE is False:
+        return SemanticRuntimeStatus(state=SemanticState.DEGRADED, detail=_SEMANTIC_DETAIL)
+    return SemanticRuntimeStatus(state=SemanticState.DEGRADED, detail=_SEMANTIC_DETAIL)
 
 
 def warmup_embedding_model() -> bool:
-    global _EMBEDDING_AVAILABLE
+    global _EMBEDDING_AVAILABLE, _SEMANTIC_DETAIL
+    settings = get_settings()
+    if not settings.semantic_matching_enabled:
+        _EMBEDDING_AVAILABLE = False
+        _SEMANTIC_DETAIL = "semantic disabled by configuration"
+        logger.info("Semantic matching disabled by configuration; rule-based matching only.")
+        return False
+
     if _EMBEDDING_AVAILABLE is False:
         return False
 
@@ -221,18 +254,23 @@ def warmup_embedding_model() -> bool:
         _encoder()
         _embed_text("embedding warmup text")
         _EMBEDDING_AVAILABLE = True
-        logger.info("Embedding model warmup completed successfully.")
+        _SEMANTIC_DETAIL = "semantic model loaded"
+        logger.info("Semantic matching state: enabled.")
         return True
     except Exception as exc:
         _EMBEDDING_AVAILABLE = False
-        logger.warning("Embedding model warmup failed; semantic scoring disabled: %s", exc)
+        _SEMANTIC_DETAIL = f"model warmup failed: {exc}"
+        logger.warning("Semantic matching state: degraded (%s).", exc)
         return False
 
 
 def _semantic_available() -> bool:
-    if _EMBEDDING_AVAILABLE is None:
+    settings = get_settings()
+    if not settings.semantic_matching_enabled:
+        return False
+    if _EMBEDDING_AVAILABLE is None and settings.embedding_warmup_on_startup:
         return warmup_embedding_model()
-    return _EMBEDDING_AVAILABLE
+    return _EMBEDDING_AVAILABLE is True
 
 
 @lru_cache(maxsize=4096)
@@ -306,9 +344,10 @@ def score_match_detailed(source: Item, candidate: Item) -> MatchDetails:
             if semantic_score > 0.70:
                 reasons.append("semantic similarity detected")
         except Exception as exc:
-            logger.warning("Semantic scoring failed; falling back to rule-based scoring only: %s", exc)
-            global _EMBEDDING_AVAILABLE
+            logger.warning("Semantic scoring failed; using fallback scoring only: %s", exc)
+            global _EMBEDDING_AVAILABLE, _SEMANTIC_DETAIL
             _EMBEDDING_AVAILABLE = False
+            _SEMANTIC_DETAIL = f"runtime scoring failure: {exc}"
 
     contradiction_penalty = 0.0
     if src.colors and cand.colors and not src.colors.intersection(cand.colors):
