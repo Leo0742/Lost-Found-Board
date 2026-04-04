@@ -46,6 +46,7 @@ export const AdminPage = () => {
     loadingStats,
     actionLoading,
     itemError,
+    signalError,
     auditError,
     statsError,
     queueSummaryError,
@@ -55,7 +56,7 @@ export const AdminPage = () => {
     setActionMessage,
     loadItems,
     loadAudit,
-    loadStats,
+    refreshAll,
     applyPreset,
     runSingleItemAction,
     runBulkAction,
@@ -75,9 +76,7 @@ export const AdminPage = () => {
         setRole(me.role ?? null)
         setIsAdmin(me.admin_access)
         if (me.admin_access) {
-          await Promise.allSettled([loadItems(undefined, 0, { forceSignals: true }), loadAudit(0), loadStats()])
-          setItemsOffset(0)
-          setAuditOffset(0)
+          await refreshAll()
         }
       } catch {
         setActionMessage('Could not verify admin access.')
@@ -86,7 +85,12 @@ export const AdminPage = () => {
       }
     }
     void load()
-  }, [loadAudit, loadItems, loadStats, setAuditOffset, setItemsOffset, setActionMessage])
+  }, [refreshAll, setActionMessage])
+
+  const maintenanceRows = Object.entries(observability?.cleanup?.maintenance_status ?? {})
+  const maintenanceHealthSummary = maintenanceRows
+    .map(([step, status]) => `${step}:${String(status.health ?? 'unknown')}`)
+    .join(' · ')
 
   const selectedSet = new Set(selectedIds)
   const canRunBulk = selectedIds.length > 0 && !actionLoading
@@ -128,6 +132,7 @@ export const AdminPage = () => {
       {actionMessage ? <p className="notice">{actionMessage}</p> : null}
       {actionWarning ? <p className="notice">Partial warning: {actionWarning}</p> : null}
       {itemError ? <p className="notice error">{itemError}</p> : null}
+      {signalError ? <p className="notice">{signalError}</p> : null}
       {auditError ? <p className="notice error">{auditError}</p> : null}
       {statsError ? <p className="notice error">{statsError}</p> : null}
       {queueSummaryError ? <p className="notice error">{queueSummaryError}</p> : null}
@@ -198,6 +203,7 @@ export const AdminPage = () => {
             <p className="subtle">Duplicate flags 24h: {observability?.duplicate_flags_24h ?? 0} · Duplicate claims 24h: {observability?.duplicate_claims_24h ?? 0} · Claim pressure 24h: {observability?.claims_created_24h ?? 0}</p>
             <p className="subtle">Blocked audit queries 24h: {observability?.blocked_admin_audit_queries_24h ?? 0} · Runtime: {String(observability?.semantic_runtime?.state ?? 'unknown')}</p>
             <p className="subtle">Maintenance: temp {String(observability?.cleanup?.maintenance_status?.temp_media_cleanup?.last_success_at ?? 'n/a')} · orphan {String(observability?.cleanup?.maintenance_status?.finalized_orphan_cleanup?.last_success_at ?? 'n/a')} · anti-abuse {String(observability?.cleanup?.maintenance_status?.anti_abuse_retention_cleanup?.last_success_at ?? 'n/a')} · audit {String(observability?.cleanup?.maintenance_status?.audit_retention_cleanup?.last_success_at ?? 'n/a')}</p>
+            {maintenanceHealthSummary ? <p className="subtle">Maintenance health: {maintenanceHealthSummary}</p> : null}
           </SectionCard>
 
           <SectionCard title="All filtered reports" subtitle="Full moderation workspace with grouped actions and trust indicators.">

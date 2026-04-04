@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Any
 
@@ -17,12 +17,32 @@ class MaintenanceStepStatus:
     runs: int = 0
     failures: int = 0
 
+    def health(self, now: datetime) -> str:
+        if self.last_success_at is None and self.last_error_at is None and self.last_attempt_at is None:
+            return "stale"
+        if self.last_error_at and (self.last_success_at is None or self.last_error_at >= self.last_success_at):
+            if now - self.last_error_at <= timedelta(hours=6):
+                return "warning"
+        if self.last_success_at is None:
+            return "warning"
+        if now - self.last_success_at > timedelta(hours=24):
+            return "stale"
+        return "healthy"
+
+    def stale_seconds(self, now: datetime) -> int | None:
+        if self.last_success_at is None:
+            return None
+        return max(0, int((now - self.last_success_at).total_seconds()))
+
     def as_dict(self) -> dict[str, Any]:
+        now = datetime.now(UTC)
         return {
             "last_attempt_at": self.last_attempt_at,
             "last_success_at": self.last_success_at,
             "last_error_at": self.last_error_at,
             "last_error": self.last_error,
+            "health": self.health(now),
+            "stale_seconds": self.stale_seconds(now),
             "last_removed_count": self.last_removed_count,
             "total_removed": self.total_removed,
             "runs": self.runs,

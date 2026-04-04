@@ -91,6 +91,7 @@ export const useAdminDashboard = () => {
   const [loadingStats, setLoadingStats] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [itemError, setItemError] = useState<string | null>(null)
+  const [signalError, setSignalError] = useState<string | null>(null)
   const [auditError, setAuditError] = useState<string | null>(null)
   const [statsError, setStatsError] = useState<string | null>(null)
   const [queueSummaryError, setQueueSummaryError] = useState<string | null>(null)
@@ -98,12 +99,16 @@ export const useAdminDashboard = () => {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionWarning, setActionWarning] = useState<string | null>(null)
   const signalsRef = useRef<Record<number, ModerationSignal>>({})
+  const itemsRequestVersionRef = useRef(0)
+  const auditRequestVersionRef = useRef(0)
+  const statsRequestVersionRef = useRef(0)
 
   useEffect(() => {
     signalsRef.current = signals
   }, [signals])
 
   const loadItems = useCallback(async (nextFilters?: ItemFilters, nextOffset?: number, options?: { forceSignals?: boolean }) => {
+    const requestVersion = ++itemsRequestVersionRef.current
     const effectiveFilters = nextFilters ?? itemFilters
     const effectiveOffset = nextOffset ?? itemsOffset
     setLoadingItems(true)
@@ -124,22 +129,36 @@ export const useAdminDashboard = () => {
         offset: effectiveOffset,
         suspicious_only: effectiveFilters.suspiciousOnly || undefined,
       })
+      if (requestVersion !== itemsRequestVersionRef.current) return
       setItems(rows)
+      setItemError(null)
       const ids = rows.map((item) => item.id)
       const signalIds = options?.forceSignals ? ids : ids.filter((id) => !signalsRef.current[id])
       if (signalIds.length) {
-        const signalRows = await fetchModerationSignals(signalIds)
-        setSignals((prev) => ({ ...prev, ...Object.fromEntries(signalRows.map((row) => [row.item_id, row])) }))
+        try {
+          const signalRows = await fetchModerationSignals(signalIds)
+          if (requestVersion !== itemsRequestVersionRef.current) return
+          setSignals((prev) => ({ ...prev, ...Object.fromEntries(signalRows.map((row) => [row.item_id, row])) }))
+          setSignalError(null)
+        } catch {
+          if (requestVersion !== itemsRequestVersionRef.current) return
+          setSignalError('Moderation signals are temporarily unavailable. Queue rows are still current.')
+        }
+      } else {
+        setSignalError(null)
       }
-      setItemError(null)
     } catch {
+      if (requestVersion !== itemsRequestVersionRef.current) return
       setItemError('Could not load moderation queue.')
     } finally {
-      setLoadingItems(false)
+      if (requestVersion === itemsRequestVersionRef.current) {
+        setLoadingItems(false)
+      }
     }
   }, [itemFilters, itemsOffset])
 
   const loadAudit = useCallback(async (nextOffset = auditOffset, nextFilters?: AuditFilters) => {
+    const requestVersion = ++auditRequestVersionRef.current
     const effectiveFilters = nextFilters ?? auditFilters
     setLoadingAudit(true)
     try {
@@ -153,22 +172,28 @@ export const useAdminDashboard = () => {
         created_from: effectiveFilters.auditCreatedFrom || undefined,
         created_to: effectiveFilters.auditCreatedTo || undefined,
       })
+      if (requestVersion !== auditRequestVersionRef.current) return
       setAuditEvents(rows)
       setAuditError(null)
     } catch {
+      if (requestVersion !== auditRequestVersionRef.current) return
       setAuditError('Could not load audit events.')
     } finally {
-      setLoadingAudit(false)
+      if (requestVersion === auditRequestVersionRef.current) {
+        setLoadingAudit(false)
+      }
     }
   }, [auditFilters, auditOffset])
 
   const loadStats = useCallback(async () => {
+    const requestVersion = ++statsRequestVersionRef.current
     setLoadingStats(true)
     const [statsResult, queueResult, observabilityResult] = await Promise.allSettled([
       fetchModerationStats(),
       fetchAdminQueueSummary(),
       fetchAdminObservability(),
     ])
+    if (requestVersion !== statsRequestVersionRef.current) return
     if (statsResult.status === 'fulfilled') {
       setStats(statsResult.value)
       setStatsError(null)
@@ -191,7 +216,7 @@ export const useAdminDashboard = () => {
   }, [])
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadItems(undefined, 0, { forceSignals: true }), loadAudit(0), loadStats()])
+    await Promise.allSettled([loadItems(undefined, 0, { forceSignals: true }), loadAudit(0), loadStats()])
     setItemsOffset(0)
     setAuditOffset(0)
   }, [loadAudit, loadItems, loadStats])
@@ -320,6 +345,7 @@ export const useAdminDashboard = () => {
     loadingStats,
     actionLoading,
     itemError,
+    signalError,
     auditError,
     statsError,
     queueSummaryError,
