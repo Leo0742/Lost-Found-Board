@@ -29,8 +29,8 @@ export const MyReportsPage = () => {
       setLinkedUsername(me.identity.telegram_username || null)
       setItems((await fetchMyItems()).sort((a, b) => b.id - a.id))
       setLinkCode(null)
-      try { setIncomingClaims(await listClaims(undefined, 'incoming') as Claim[]) } catch { setIncomingError('Incoming claims unavailable.'); setIncomingClaims([]) }
-      try { setOutgoingClaims(await listClaims(undefined, 'outgoing') as Claim[]) } catch { setOutgoingError('Outgoing claims unavailable.'); setOutgoingClaims([]) }
+      try { setIncomingClaims(await listClaims('incoming') as Claim[]) } catch { setIncomingError('Incoming claims unavailable.'); setIncomingClaims([]) }
+      try { setOutgoingClaims(await listClaims('outgoing') as Claim[]) } catch { setOutgoingError('Outgoing claims unavailable.'); setOutgoingClaims([]) }
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail?: string }>
       if (axiosErr.response?.status === 401) { setLinkedUserId(null); setLinkedUsername(null); setItems([]); return }

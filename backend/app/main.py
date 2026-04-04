@@ -37,6 +37,8 @@ async def lifespan(_: FastAPI):
     semantic = semantic_runtime_status()
     logger.info("Semantic matching startup state: %s (%s)", semantic.state.value, semantic.detail)
     logger.info("Internal API token configured: %s", "yes" if settings.internal_api_token else "no")
+    if settings.strict_internal_token and not settings.is_dev_env and not settings.has_secure_internal_token:
+        raise RuntimeError("INTERNAL_API_TOKEN must be set to a non-default value outside dev/test environments.")
 
     async def _periodic_temp_cleanup() -> None:
         interval_minutes = settings.media_cleanup_interval_minutes

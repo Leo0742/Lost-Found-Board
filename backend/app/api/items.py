@@ -18,17 +18,20 @@ from app.schemas.item import (
     ClaimAction,
     ClaimCreate,
     ClaimRead,
+    InternalClaimAction,
+    InternalClaimCreate,
     AuditEventRead,
     CategorySuggestionRead,
     ImageUploadResult,
+    ItemAdminUpdate,
     ItemCreate,
     ItemFlagRequest,
     ItemLifecycleAdminAction,
     ItemModerationAction,
     ItemOwnerAction,
+    ItemOwnerUpdate,
     ItemPublicRead,
     ItemRead,
-    ItemUpdate,
     ItemVerificationAction,
     InternalMatchResult,
     MatchResult,
@@ -197,8 +200,10 @@ def create_claim(
     if source.status == target.status:
         raise HTTPException(status_code=400, detail="Claim requires opposite lost/found reports")
     source_owner_id = source.owner_telegram_user_id or source.telegram_user_id
-    actor_id = auth_telegram_user_id or payload.requester_telegram_user_id
-    if actor_id and source_owner_id != actor_id:
+    if not auth_telegram_user_id:
+        raise HTTPException(status_code=401, detail="Connect Telegram first")
+    actor_id = auth_telegram_user_id
+    if source_owner_id != actor_id:
         raise HTTPException(status_code=403, detail="Only source owner can create this claim")
     claim = service.create_claim(
         source,
@@ -212,16 +217,15 @@ def create_claim(
 
 @router.get("/claim-requests", response_model=list[ClaimRead])
 def list_claims(
-    telegram_user_id: int | None = Query(default=None),
     direction: str = Query(default="all"),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> list[ClaimRead]:
     if direction not in {"all", "incoming", "outgoing"}:
         raise HTTPException(status_code=400, detail="direction must be one of: all, incoming, outgoing")
-    actor_id = auth_telegram_user_id or telegram_user_id
+    actor_id = auth_telegram_user_id
     if not actor_id:
-        raise HTTPException(status_code=401, detail="Telegram identity is required")
+        raise HTTPException(status_code=401, detail="Connect Telegram first")
     service = ItemService(db)
     claims = service.list_claims(telegram_user_id=actor_id, direction=direction)
     return [service.claim_read(claim, viewer_telegram_user_id=actor_id) for claim in claims]
@@ -248,15 +252,48 @@ def get_item(
 @router.patch("/{item_id}", response_model=ItemRead)
 def update_item(
     item_id: int,
-    payload: ItemUpdate,
+    payload: ItemOwnerUpdate,
     _: None = Depends(require_csrf_for_session),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    session: WebAuthSession | None = Depends(get_session_from_cookie),
     db: Session = Depends(get_db),
 ) -> ItemRead:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return service.update_item(item, payload)
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        return item
+    if auth_telegram_user_id and service.is_owner(item, auth_telegram_user_id):
+        return service.update_item(item, update_data, actor_telegram_user_id=auth_telegram_user_id)
+    role = get_admin_role_for_session(session)
+    if role:
+        raise HTTPException(status_code=403, detail="Use admin item patch endpoint")
+    raise HTTPException(status_code=403, detail="Only owner can update this item")
+
+
+@router.patch("/admin/items/{item_id}", response_model=ItemRead)
+def admin_patch_item(
+    item_id: int,
+    payload: ItemAdminUpdate,
+    _: None = Depends(require_csrf_for_session),
+    role: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        return item
+    if role == AdminRole.MODERATOR:
+        forbidden = {"lifecycle", "is_verified"}
+        attempted = forbidden.intersection(update_data.keys())
+        if attempted:
+            raise HTTPException(status_code=403, detail=f"Moderator cannot patch fields: {', '.join(sorted(attempted))}")
+    return service.update_item(item, update_data)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -274,16 +311,14 @@ def delete_item(
 
 
 def _actor_telegram_id(payload: ItemOwnerAction, auth_telegram_user_id: int | None) -> int:
-    actor_id = auth_telegram_user_id or payload.telegram_user_id
-    if not actor_id:
-        raise HTTPException(status_code=401, detail="Telegram identity is required")
-    return actor_id
+    if not auth_telegram_user_id:
+        raise HTTPException(status_code=401, detail="Connect Telegram first")
+    return auth_telegram_user_id
 
 
 @router.post("/{item_id}/resolve", response_model=ItemRead)
 def resolve_item(
     item_id: int,
-    payload: ItemOwnerAction,
     _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
@@ -292,7 +327,7 @@ def resolve_item(
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    if not service.is_owner(item, _actor_telegram_id(payload, auth_telegram_user_id)):
+    if not service.is_owner(item, _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)):
         raise HTTPException(status_code=403, detail="Only the owner can resolve this item")
     return service.mark_resolved(item)
 
@@ -300,7 +335,6 @@ def resolve_item(
 @router.post("/{item_id}/reopen", response_model=ItemRead)
 def reopen_item(
     item_id: int,
-    payload: ItemOwnerAction,
     _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
@@ -309,7 +343,7 @@ def reopen_item(
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    if not service.is_owner(item, _actor_telegram_id(payload, auth_telegram_user_id)):
+    if not service.is_owner(item, _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)):
         raise HTTPException(status_code=403, detail="Only the owner can reopen this item")
     return service.reopen(item)
 
@@ -317,7 +351,6 @@ def reopen_item(
 @router.post("/{item_id}/delete", response_model=ItemRead)
 def soft_delete_item(
     item_id: int,
-    payload: ItemOwnerAction,
     _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
@@ -326,7 +359,7 @@ def soft_delete_item(
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    if not service.is_owner(item, _actor_telegram_id(payload, auth_telegram_user_id)):
+    if not service.is_owner(item, _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)):
         raise HTTPException(status_code=403, detail="Only the owner can delete this item")
     return service.delete_item(item)
 
@@ -426,7 +459,7 @@ def approve_claim(
     claim = service.get_claim(claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    actor_id = _actor_telegram_id(ItemOwnerAction(telegram_user_id=payload.telegram_user_id), auth_telegram_user_id)
+    actor_id = _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)
     if claim.owner_telegram_user_id != actor_id:
         raise HTTPException(status_code=403, detail="Only claim target owner can approve")
     updated = service.update_claim_status(claim, ClaimStatus.APPROVED, note=payload.note)
@@ -445,7 +478,7 @@ def reject_claim(
     claim = service.get_claim(claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    actor_id = _actor_telegram_id(ItemOwnerAction(telegram_user_id=payload.telegram_user_id), auth_telegram_user_id)
+    actor_id = _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)
     if claim.owner_telegram_user_id != actor_id:
         raise HTTPException(status_code=403, detail="Only claim target owner can reject")
     updated = service.update_claim_status(claim, ClaimStatus.REJECTED, note=payload.note)
@@ -464,7 +497,7 @@ def cancel_claim(
     claim = service.get_claim(claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    actor_id = _actor_telegram_id(ItemOwnerAction(telegram_user_id=payload.telegram_user_id), auth_telegram_user_id)
+    actor_id = _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)
     if claim.requester_telegram_user_id != actor_id:
         raise HTTPException(status_code=403, detail="Only requester can cancel")
     updated = service.update_claim_status(claim, ClaimStatus.CANCELLED, note=payload.note)
@@ -483,7 +516,7 @@ def complete_claim(
     claim = service.get_claim(claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    actor_id = _actor_telegram_id(ItemOwnerAction(telegram_user_id=payload.telegram_user_id), auth_telegram_user_id)
+    actor_id = _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)
     if actor_id not in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
         raise HTTPException(status_code=403, detail="Only participants can complete")
 
@@ -509,8 +542,135 @@ def not_match_claim(
     claim = service.get_claim(claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    actor_id = _actor_telegram_id(ItemOwnerAction(telegram_user_id=payload.telegram_user_id), auth_telegram_user_id)
+    actor_id = _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)
     if actor_id not in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
         raise HTTPException(status_code=403, detail="Only participants can mark not-match")
     updated = service.update_claim_status(claim, ClaimStatus.NOT_MATCH, note=payload.note)
+    return service.claim_read(updated, viewer_telegram_user_id=actor_id)
+
+
+@router.post("/internal/{item_id}/resolve", response_model=ItemRead)
+def internal_resolve_item(
+    item_id: int,
+    payload: ItemOwnerAction,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    actor_id = payload.telegram_user_id
+    if not actor_id or not service.is_owner(item, actor_id):
+        raise HTTPException(status_code=403, detail="Only owner can resolve this item")
+    return service.mark_resolved(item)
+
+
+@router.post("/internal/{item_id}/reopen", response_model=ItemRead)
+def internal_reopen_item(
+    item_id: int,
+    payload: ItemOwnerAction,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    actor_id = payload.telegram_user_id
+    if not actor_id or not service.is_owner(item, actor_id):
+        raise HTTPException(status_code=403, detail="Only owner can reopen this item")
+    return service.reopen(item)
+
+
+@router.post("/internal/{item_id}/delete", response_model=ItemRead)
+def internal_soft_delete_item(
+    item_id: int,
+    payload: ItemOwnerAction,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> ItemRead:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    actor_id = payload.telegram_user_id
+    if not actor_id or not service.is_owner(item, actor_id):
+        raise HTTPException(status_code=403, detail="Only owner can delete this item")
+    return service.delete_item(item)
+
+
+@router.post("/internal/claim-requests", response_model=ClaimRead)
+def create_claim_internal(
+    payload: InternalClaimCreate,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> ClaimRead:
+    service = ItemService(db)
+    source = service.get_item(payload.source_item_id)
+    target = service.get_item(payload.target_item_id)
+    if not source or not target:
+        raise HTTPException(status_code=404, detail="Source or target item not found")
+    source_owner_id = source.owner_telegram_user_id or source.telegram_user_id
+    if source_owner_id != payload.requester_telegram_user_id:
+        raise HTTPException(status_code=403, detail="Only source owner can create this claim")
+    claim = service.create_claim(
+        source,
+        target,
+        requester_telegram_user_id=payload.requester_telegram_user_id,
+        requester_name=payload.requester_name,
+        claim_message=payload.claim_message,
+    )
+    return service.claim_read(claim, viewer_telegram_user_id=payload.requester_telegram_user_id)
+
+
+@router.get("/internal/claim-requests", response_model=list[ClaimRead])
+def list_claims_internal(
+    telegram_user_id: int = Query(...),
+    direction: str = Query(default="all"),
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> list[ClaimRead]:
+    service = ItemService(db)
+    claims = service.list_claims(telegram_user_id=telegram_user_id, direction=direction)
+    return [service.claim_read(claim, viewer_telegram_user_id=telegram_user_id) for claim in claims]
+
+
+@router.post("/internal/claim-requests/{claim_id}/{action}", response_model=ClaimRead)
+def claim_action_internal(
+    claim_id: int,
+    action: str,
+    payload: InternalClaimAction,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> ClaimRead:
+    transitions = {
+        "approve": ClaimStatus.APPROVED,
+        "reject": ClaimStatus.REJECTED,
+        "cancel": ClaimStatus.CANCELLED,
+        "complete": ClaimStatus.COMPLETED,
+        "not-match": ClaimStatus.NOT_MATCH,
+    }
+    status_target = transitions.get(action)
+    if not status_target:
+        raise HTTPException(status_code=404, detail="Unsupported claim action")
+    service = ItemService(db)
+    claim = service.get_claim(claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    actor_id = payload.telegram_user_id
+    if action in {"approve", "reject"} and claim.owner_telegram_user_id != actor_id:
+        raise HTTPException(status_code=403, detail="Only claim target owner can perform this action")
+    if action == "cancel" and claim.requester_telegram_user_id != actor_id:
+        raise HTTPException(status_code=403, detail="Only requester can cancel")
+    if action in {"complete", "not-match"} and actor_id not in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
+        raise HTTPException(status_code=403, detail="Only participants can perform this action")
+    if action == "complete":
+        source = service.get_item(claim.source_item_id)
+        target = service.get_item(claim.target_item_id)
+        if source:
+            service.mark_resolved(source)
+        if target:
+            service.mark_resolved(target)
+    updated = service.update_claim_status(claim, status_target, note=payload.note)
     return service.claim_read(updated, viewer_telegram_user_id=actor_id)
