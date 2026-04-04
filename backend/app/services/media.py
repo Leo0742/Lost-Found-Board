@@ -73,6 +73,43 @@ def cleanup_stale_temp_uploads(now: datetime | None = None) -> int:
     return removed
 
 
+def cleanup_finalized_orphans(now: datetime | None = None) -> int:
+    """Delete old finalized media files that no longer belong to an item record."""
+    from sqlalchemy import select
+
+    from app.db.session import SessionLocal
+    from app.models.item import Item
+
+    settings = get_settings()
+    root, tmp_dir = ensure_media_dirs()
+    now = now or datetime.now(UTC)
+    cutoff = now - timedelta(hours=max(settings.media_tmp_ttl_hours, 24))
+
+    try:
+        with SessionLocal() as db:
+            linked_paths = {path for path in db.scalars(select(Item.image_path).where(Item.image_path.is_not(None))).all() if path}
+    except Exception as exc:
+        logger.info("Skipping finalized orphan cleanup: %s", exc)
+        return 0
+
+    removed = 0
+    for file in root.iterdir():
+        if not file.is_file() or file.parent == tmp_dir:
+            continue
+        rel_path = file.name
+        if rel_path in linked_paths:
+            continue
+        modified = datetime.fromtimestamp(file.stat().st_mtime, tz=UTC)
+        if modified > cutoff:
+            continue
+        try:
+            file.unlink()
+            removed += 1
+        except OSError as exc:
+            logger.warning("Failed to cleanup orphaned finalized media '%s': %s", file.name, exc)
+    return removed
+
+
 def media_storage_ready() -> bool:
     try:
         root, tmp = ensure_media_dirs()

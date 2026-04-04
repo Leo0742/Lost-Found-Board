@@ -46,8 +46,8 @@ from app.schemas.item import (
     ModerationStatsRead,
     SmartSearchResultRead,
 )
-from app.services.anti_abuse import RateLimitRule, client_ip_hash, enforce_rate_limit
-from app.services.audit import list_events
+from app.services.anti_abuse import AbuseAction, RateLimitRule, client_ip_hash, enforce_rate_limit
+from app.services.audit import describe_event, list_events
 from app.services.item_service import ItemService
 
 router = APIRouter(prefix="/api/items", tags=["items"])
@@ -65,10 +65,10 @@ def create_item(
     settings = get_settings()
     enforce_rate_limit(
         db,
-        action="create_item",
+        action=AbuseAction.CREATE_ITEM.value if auth_telegram_user_id else AbuseAction.CREATE_ITEM_ANON.value,
         rule=RateLimitRule(
             window_seconds=settings.create_rate_limit_window_minutes * 60,
-            max_hits=settings.create_rate_limit_max_items,
+            max_hits=settings.create_rate_limit_max_items if auth_telegram_user_id else settings.create_rate_limit_max_items_anon,
             error_message="Too many new reports in a short period. Please try again later.",
         ),
         actor_telegram_user_id=auth_telegram_user_id,
@@ -104,7 +104,7 @@ def upload_item_image(
         settings = get_settings()
         enforce_rate_limit(
             db,
-            action="upload_image",
+            action=AbuseAction.UPLOAD_IMAGE.value,
             rule=RateLimitRule(
                 window_seconds=settings.upload_rate_limit_window_minutes * 60,
                 max_hits=settings.upload_rate_limit_max,
@@ -191,7 +191,7 @@ def list_audit_events(
     settings = get_settings()
     enforce_rate_limit(
         db,
-        action="admin_audit_list",
+        action=AbuseAction.ADMIN_AUDIT_LIST.value,
         rule=RateLimitRule(
             window_seconds=settings.admin_audit_rate_limit_window_minutes * 60,
             max_hits=settings.admin_audit_rate_limit_max,
@@ -201,7 +201,7 @@ def list_audit_events(
         session_id=session.id if session else None,
         ip_hash=client_ip_hash(request),
     )
-    return list_events(
+    events = list_events(
         db,
         limit=limit,
         offset=offset,
@@ -212,6 +212,25 @@ def list_audit_events(
         created_from=created_from,
         created_to=created_to,
     )
+    rows: list[AuditEventRead] = []
+    for event in events:
+        enriched = describe_event(event)
+        rows.append(
+            AuditEventRead(
+                id=event.id,
+                event_type=event.event_type,
+                actor_telegram_user_id=event.actor_telegram_user_id,
+                item_id=event.item_id,
+                claim_id=event.claim_id,
+                details=event.details or {},
+                created_at=event.created_at,
+                label=enriched["label"],
+                summary=enriched["summary"],
+                item_url=enriched["item_url"],
+                claim_url=enriched["claim_url"],
+            )
+        )
+    return rows
 
 
 @router.get("/admin/moderation-signals", response_model=list[ModerationSignalRead])
@@ -228,6 +247,8 @@ def moderation_signals(
     for item_id in item_ids[:200]:
         total_flags = db.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id)) or 0
         recent_flags = db.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.event_type == "item_flagged", AuditEvent.item_id == item_id, AuditEvent.created_at >= since_24h)) or 0
+        duplicate_flags_24h = db.scalar(select(func.count(AntiAbuseEvent.id)).where(AntiAbuseEvent.action == AbuseAction.FLAG_DUPLICATE.value, AntiAbuseEvent.item_id == item_id, AntiAbuseEvent.created_at >= since_24h)) or 0
+        blocked_events_24h = db.scalar(select(func.count(AntiAbuseEvent.id)).where(AntiAbuseEvent.item_id == item_id, AntiAbuseEvent.blocked.is_(True), AntiAbuseEvent.created_at >= since_24h)) or 0
         claim_count = db.scalar(select(func.count(Claim.id)).where((Claim.source_item_id == item_id) | (Claim.target_item_id == item_id))) or 0
         recent_claims = db.scalar(select(func.count(Claim.id)).where(((Claim.source_item_id == item_id) | (Claim.target_item_id == item_id)), Claim.created_at >= since_24h)) or 0
         last_flag_at = db.scalar(
@@ -243,6 +264,10 @@ def moderation_signals(
             markers.append("high_total_flags")
         if recent_claims >= 3:
             markers.append("claim_spike_24h")
+        if duplicate_flags_24h >= 2:
+            markers.append("duplicate_flag_pressure")
+        if blocked_events_24h >= 2:
+            markers.append("abuse_blocks_24h")
         rows.append(
             ModerationSignalRead(
                 item_id=item_id,
@@ -250,6 +275,8 @@ def moderation_signals(
                 recent_flags_24h=recent_flags,
                 recent_claims_24h=recent_claims,
                 claim_count=claim_count,
+                duplicate_flags_24h=duplicate_flags_24h,
+                blocked_events_24h=blocked_events_24h,
                 last_flag_at=last_flag_at,
                 suspicion_markers=markers,
             )
@@ -290,7 +317,7 @@ def smart_search_items(
     settings = get_settings()
     enforce_rate_limit(
         db,
-        action="smart_search",
+        action=AbuseAction.SMART_SEARCH.value,
         rule=RateLimitRule(
             window_seconds=settings.smart_search_rate_limit_window_minutes * 60,
             max_hits=settings.smart_search_rate_limit_max,
@@ -321,7 +348,7 @@ def suggest_category(
     settings = get_settings()
     enforce_rate_limit(
         db,
-        action="category_suggest",
+        action=AbuseAction.CATEGORY_SUGGEST.value,
         rule=RateLimitRule(
             window_seconds=settings.category_suggest_rate_limit_window_minutes * 60,
             max_hits=settings.category_suggest_rate_limit_max,
@@ -368,10 +395,10 @@ def create_claim(
     settings = get_settings()
     enforce_rate_limit(
         db,
-        action="create_claim",
+        action=AbuseAction.CREATE_CLAIM.value,
         rule=RateLimitRule(
             window_seconds=settings.claim_rate_limit_window_minutes * 60,
-            max_hits=settings.claim_rate_limit_max,
+            max_hits=settings.claim_rate_limit_max if auth_telegram_user_id else settings.claim_rate_limit_max_anon,
             error_message="Too many claim attempts. Please wait and try again later.",
         ),
         actor_telegram_user_id=auth_telegram_user_id,
@@ -402,6 +429,8 @@ def create_claim(
         requester_telegram_user_id=actor_id or source_owner_id,
         requester_name=payload.requester_name,
         claim_message=payload.claim_message,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
     )
     return service.claim_read(claim, viewer_telegram_user_id=actor_id or source_owner_id)
 
@@ -568,10 +597,10 @@ def flag_item(
     settings = get_settings()
     enforce_rate_limit(
         db,
-        action="flag_item",
+        action=AbuseAction.FLAG_ITEM.value,
         rule=RateLimitRule(
             window_seconds=settings.flag_rate_limit_window_minutes * 60,
-            max_hits=settings.flag_rate_limit_max,
+            max_hits=settings.flag_rate_limit_max if auth_telegram_user_id else settings.flag_rate_limit_max_anon,
             error_message="Too many flag submissions. Please try again later.",
         ),
         actor_telegram_user_id=auth_telegram_user_id,

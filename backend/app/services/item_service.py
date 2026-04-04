@@ -14,9 +14,8 @@ from app.services.matching import score_match_detailed
 from app.services.catalog import CATEGORY_CATALOG, infer_category
 from app.services.search_utils import rank_items
 from app.services.audit import log_event
-from app.services.anti_abuse import has_recent_duplicate
+from app.services.anti_abuse import AbuseAction, has_recent_duplicate, normalize_reason, record_signal
 from app.services.media import finalize_uploaded_image, is_tmp_path, remove_media_file
-from app.models.anti_abuse_event import AntiAbuseEvent
 
 
 class ItemService:
@@ -230,7 +229,7 @@ class ItemService:
             self.db.add(item)
             self.db.commit()
             self.db.refresh(item)
-            if old_image and old_image != item.image_path and is_tmp_path(old_image):
+            if old_image and old_image != item.image_path:
                 remove_media_file(old_image)
             log_event(
                 self.db,
@@ -284,7 +283,7 @@ class ItemService:
     def delete_item(self, item: Item) -> Item:
         item.lifecycle = ItemLifecycle.DELETED
         item.deleted_at = datetime.now(UTC)
-        if is_tmp_path(item.image_path):
+        if item.image_path:
             remove_media_file(item.image_path)
             item.image_path = None
         self.db.add(item)
@@ -330,10 +329,11 @@ class ItemService:
         return self.delete_item(item)
 
     def flag_item(self, item: Item, reason: str, *, actor_telegram_user_id: int | None = None, session_id: str | None = None, ip_hash: str | None = None) -> Item:
-        fingerprint = " ".join(reason.lower().split())
+        normalized_reason = normalize_reason(reason)
+        fingerprint = normalized_reason
         if has_recent_duplicate(
             self.db,
-            action="flag_item_submission",
+            action=AbuseAction.FLAG_SUBMISSION.value,
             actor_telegram_user_id=actor_telegram_user_id,
             session_id=session_id,
             ip_hash=ip_hash,
@@ -341,6 +341,16 @@ class ItemService:
             item_id=item.id,
             within_hours=24,
         ):
+            record_signal(
+                self.db,
+                action=AbuseAction.FLAG_DUPLICATE.value,
+                actor_telegram_user_id=actor_telegram_user_id,
+                session_id=session_id,
+                ip_hash=ip_hash,
+                fingerprint=fingerprint,
+                item_id=item.id,
+            )
+            self.db.commit()
             raise HTTPException(status_code=409, detail="You already submitted the same flag recently.")
 
         item.moderation_status = ModerationStatus.FLAGGED
@@ -349,16 +359,14 @@ class ItemService:
         self.db.add(item)
         self.db.commit()
         self.db.refresh(item)
-        self.db.add(
-            AntiAbuseEvent(
-                action="flag_item_submission",
-                actor_telegram_user_id=actor_telegram_user_id,
-                session_id=session_id,
-                ip_hash=ip_hash,
-                fingerprint=fingerprint,
-                item_id=item.id,
-                blocked=False,
-            )
+        record_signal(
+            self.db,
+            action=AbuseAction.FLAG_SUBMISSION.value,
+            actor_telegram_user_id=actor_telegram_user_id,
+            session_id=session_id,
+            ip_hash=ip_hash,
+            fingerprint=fingerprint,
+            item_id=item.id,
         )
         self.db.commit()
         log_event(
@@ -366,7 +374,7 @@ class ItemService:
             "item_flagged",
             actor_telegram_user_id=actor_telegram_user_id,
             item_id=item.id,
-            details={"reason": reason, "session_id": bool(session_id), "ip_tracked": bool(ip_hash)},
+            details={"reason": reason, "normalized_reason": normalized_reason, "session_id": bool(session_id), "ip_tracked": bool(ip_hash)},
         )
         self.db.commit()
         return item
@@ -378,7 +386,33 @@ class ItemService:
         requester_telegram_user_id: int | None,
         requester_name: str | None,
         claim_message: str | None,
+        *,
+        session_id: str | None = None,
+        ip_hash: str | None = None,
     ) -> Claim:
+        fingerprint = f"{min(source_item.id, target_item.id)}:{max(source_item.id, target_item.id)}"
+        if has_recent_duplicate(
+            self.db,
+            action=AbuseAction.CLAIM_SUBMISSION.value,
+            actor_telegram_user_id=requester_telegram_user_id,
+            session_id=session_id,
+            ip_hash=ip_hash,
+            fingerprint=fingerprint,
+            item_id=source_item.id,
+            within_hours=24,
+        ):
+            record_signal(
+                self.db,
+                action=AbuseAction.CLAIM_DUPLICATE.value,
+                actor_telegram_user_id=requester_telegram_user_id,
+                session_id=session_id,
+                ip_hash=ip_hash,
+                fingerprint=fingerprint,
+                item_id=source_item.id,
+            )
+            self.db.commit()
+            raise HTTPException(status_code=409, detail="You already created a similar claim recently.")
+
         existing = self.db.scalar(
             select(Claim).where(
                 Claim.source_item_id == source_item.id,
@@ -401,6 +435,16 @@ class ItemService:
         self.db.add(claim)
         self.db.commit()
         self.db.refresh(claim)
+        record_signal(
+            self.db,
+            action=AbuseAction.CLAIM_SUBMISSION.value,
+            actor_telegram_user_id=claim.requester_telegram_user_id,
+            session_id=session_id,
+            ip_hash=ip_hash,
+            fingerprint=fingerprint,
+            item_id=source_item.id,
+        )
+        self.db.commit()
         log_event(
             self.db,
             "claim_created",

@@ -92,6 +92,7 @@ def test_admin_audit_and_moderation_stats_filters(client, db_session_factory, mo
     )
     assert audit.status_code == 200
     assert all(row["event_type"] == "item_flagged" for row in audit.json())
+    assert audit.json()[0]["summary"]
 
     stats = client.get("/api/items/admin/moderation-stats", cookies=cookies, headers=headers)
     assert stats.status_code == 200
@@ -100,3 +101,5 @@ def test_admin_audit_and_moderation_stats_filters(client, db_session_factory, mo
     signals = client.get("/api/items/admin/moderation-signals", params={"item_ids": [item["id"]]}, cookies=cookies, headers=headers)
     assert signals.status_code == 200
     assert signals.json()[0]["item_id"] == item["id"]
+    assert "duplicate_flags_24h" in signals.json()[0]
+    assert "blocked_events_24h" in signals.json()[0]
