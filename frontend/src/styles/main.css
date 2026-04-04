@@ -109,7 +109,14 @@ a { color: inherit; }
   margin-bottom: 1.25rem;
 }
 
-.hero h1 { margin: 0; font-size: clamp(1.65rem, 3.5vw, 2.2rem); letter-spacing: -0.03em; }
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 3.6vw, 2.35rem);
+  font-weight: 750;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  max-width: 18ch;
+}
 .hero p { color: #d8e4ff; margin: .6rem 0 0; max-width: 70ch; }
 .hero-stats { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
 .hero-stats > div {

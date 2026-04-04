@@ -2,7 +2,7 @@ import sys
 
 import httpx
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -608,12 +608,12 @@ async def keyboard_clear(message: Message, state: FSMContext) -> None:
     await cmd_clear(message, state)
 
 
-@dp.message(NewItemForm, F.text.casefold() == "cancel")
+@dp.message(StateFilter(NewItemForm), F.text.casefold() == "cancel")
 async def wizard_cancel(message: Message, state: FSMContext) -> None:
     await _cancel_wizard(message, state)
 
 
-@dp.message(NewItemForm, F.text.casefold() == "back")
+@dp.message(StateFilter(NewItemForm), F.text.casefold() == "back")
 async def wizard_back(message: Message, state: FSMContext) -> None:
     await _go_back(message, state)
 
