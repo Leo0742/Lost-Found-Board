@@ -41,6 +41,33 @@ export type ModerationSignal = {
   suspicion_markers: string[]
 }
 
+
+export type AdminItemsParams = {
+  moderation_status?: string
+  lifecycle?: string
+  q?: string
+  category?: string
+  status?: string
+  is_verified?: boolean
+  actor_telegram_user_id?: number
+  created_from?: string
+  created_to?: string
+  sort_by?: string
+  sort_order?: string
+  limit?: number
+  offset?: number
+}
+
+export type AuditEventsParams = {
+  event_type?: string
+  actor_telegram_user_id?: number
+  item_id?: number
+  claim_id?: number
+  limit?: number
+  offset?: number
+  created_from?: string
+  created_to?: string
+}
 export type ModerationStats = {
   pending: number
   flagged: number
@@ -147,7 +174,7 @@ export const fetchMyItems = async () => {
   return response.data
 }
 
-export const fetchAdminItems = async (params: { moderation_status?: string; lifecycle?: string; q?: string; category?: string; status?: string; is_verified?: boolean; actor_telegram_user_id?: number; created_from?: string; created_to?: string; sort_by?: string; sort_order?: string; limit?: number; offset?: number }) => {
+export const fetchAdminItems = async (params: AdminItemsParams) => {
   const response = await apiClient.get<Item[]>('/items/admin/items', {
     params
   })
@@ -169,7 +196,7 @@ export const lifecycleItemAdmin = async (itemId: number, action: 'resolve' | 're
   return response.data
 }
 
-export const fetchAuditEvents = async (params: { event_type?: string; actor_telegram_user_id?: number; item_id?: number; claim_id?: number; limit?: number; offset?: number; created_from?: string; created_to?: string }) => {
+export const fetchAuditEvents = async (params: AuditEventsParams) => {
   const response = await apiClient.get<AuditEvent[]>('/items/admin/audit-events', { params })
   return response.data
 }
