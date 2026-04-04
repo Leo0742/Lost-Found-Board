@@ -22,22 +22,28 @@ class ItemService:
         self.db = db
 
     def create_item(self, payload: ItemCreate) -> Item:
-        self._enforce_anti_spam(payload)
-        normalized = payload.model_dump()
-        normalized["image_path"] = finalize_uploaded_image(normalized.get("image_path"))
-        item = Item(**normalized)
-        if not item.owner_telegram_user_id and item.telegram_user_id:
-            item.owner_telegram_user_id = item.telegram_user_id
-        if not item.owner_telegram_username and item.telegram_username:
-            item.owner_telegram_username = item.telegram_username
-        if not item.owner_display_name:
-            item.owner_display_name = item.contact_name
-        self.db.add(item)
-        self.db.commit()
-        self.db.refresh(item)
-        log_event(self.db, "item_created", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"status": item.status.value, "has_image": bool(item.image_path)})
-        self.db.commit()
-        return item
+        cleanup_path = payload.image_path if is_tmp_path(payload.image_path) else None
+        try:
+            self._enforce_anti_spam(payload)
+            normalized = payload.model_dump()
+            normalized["image_path"] = finalize_uploaded_image(normalized.get("image_path"))
+            item = Item(**normalized)
+            if not item.owner_telegram_user_id and item.telegram_user_id:
+                item.owner_telegram_user_id = item.telegram_user_id
+            if not item.owner_telegram_username and item.telegram_username:
+                item.owner_telegram_username = item.telegram_username
+            if not item.owner_display_name:
+                item.owner_display_name = item.contact_name
+            self.db.add(item)
+            self.db.commit()
+            self.db.refresh(item)
+            log_event(self.db, "item_created", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"status": item.status.value, "has_image": bool(item.image_path)})
+            self.db.commit()
+            return item
+        except Exception:
+            if cleanup_path:
+                remove_media_file(cleanup_path)
+            raise
 
     def _enforce_anti_spam(self, payload: ItemCreate) -> None:
         settings = get_settings()
@@ -155,18 +161,24 @@ class ItemService:
     def update_item(self, item: Item, payload: ItemUpdate) -> Item:
         data = payload.model_dump(exclude_unset=True)
         old_image = item.image_path
-        if "image_path" in data:
-            data["image_path"] = finalize_uploaded_image(data.get("image_path"))
-        for key, value in data.items():
-            setattr(item, key, value)
-        self.db.add(item)
-        self.db.commit()
-        self.db.refresh(item)
-        if old_image and old_image != item.image_path and is_tmp_path(old_image):
-            remove_media_file(old_image)
-        log_event(self.db, "item_updated", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"fields": sorted(data.keys())})
-        self.db.commit()
-        return item
+        cleanup_path = data.get("image_path") if is_tmp_path(data.get("image_path")) else None
+        try:
+            if "image_path" in data:
+                data["image_path"] = finalize_uploaded_image(data.get("image_path"))
+            for key, value in data.items():
+                setattr(item, key, value)
+            self.db.add(item)
+            self.db.commit()
+            self.db.refresh(item)
+            if old_image and old_image != item.image_path and is_tmp_path(old_image):
+                remove_media_file(old_image)
+            log_event(self.db, "item_updated", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id, details={"fields": sorted(data.keys())})
+            self.db.commit()
+            return item
+        except Exception:
+            if cleanup_path:
+                remove_media_file(cleanup_path)
+            raise
 
     def list_my_items(self, telegram_user_id: int) -> list[Item]:
         query: Select[tuple[Item]] = (

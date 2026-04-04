@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchAdminItems, generateLinkCode, getAuthMe, lifecycleItemAdmin, moderateItem, verifyItemAdmin } from '../api/items'
+import { fetchAdminItems, fetchAuditEvents, generateLinkCode, getAuthMe, lifecycleItemAdmin, moderateItem, verifyItemAdmin, type AuditEvent } from '../api/items'
 import { Item } from '../types/item'
 import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
 
@@ -16,6 +16,8 @@ export const AdminPage = () => {
   const [lifecycleFilter, setLifecycleFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+  const [auditType, setAuditType] = useState('')
 
   const loadItems = async (overrides?: { moderationFilter?: string; lifecycleFilter?: string; query?: string }) => {
     const moderationValue = overrides?.moderationFilter ?? moderationFilter
@@ -26,6 +28,9 @@ export const AdminPage = () => {
       lifecycle: lifecycleValue === 'all' ? undefined : lifecycleValue,
       q: queryValue || undefined
     }))
+  }
+  const loadAudit = async (eventType?: string) => {
+    setAuditEvents(await fetchAuditEvents({ limit: 50, event_type: eventType || undefined }))
   }
 
   useEffect(() => {
@@ -38,7 +43,10 @@ export const AdminPage = () => {
         setLinkedUsername(me.identity?.telegram_username ?? null)
         setRole(me.role ?? null)
         setIsAdmin(me.admin_access)
-        if (me.admin_access) await loadItems()
+        if (me.admin_access) {
+          await loadItems()
+          await loadAudit()
+        }
       } catch { setError('Could not verify admin access.') }
       finally { setAuthLoading(false) }
     }
@@ -47,7 +55,7 @@ export const AdminPage = () => {
   }, [])
 
   const run = async (fn: () => Promise<unknown>) => {
-    try { await fn(); await loadItems() } catch { setError('Admin action failed.') }
+    try { await fn(); await Promise.all([loadItems(), loadAudit(auditType)]) } catch { setError('Admin action failed.') }
   }
 
   const summary = useMemo(() => ({
@@ -134,6 +142,26 @@ export const AdminPage = () => {
                   </div>
                 </article>
               ))}</div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Recent audit events" subtitle="Operational history for moderation and claim decisions.">
+            <form className="filters" onSubmit={(e) => { e.preventDefault(); void loadAudit(auditType) }}>
+              <label>Event type<input value={auditType} onChange={(e) => setAuditType(e.target.value)} placeholder="e.g. item_moderated" /></label>
+              <button type="submit">Filter history</button>
+            </form>
+            {auditEvents.length === 0 ? <p className="subtle">No events found.</p> : (
+              <div className="stack">
+                {auditEvents.map((event) => (
+                  <article className="card stack" key={event.id}>
+                    <strong>{event.event_type}</strong>
+                    <p className="subtle">
+                      actor: {event.actor_telegram_user_id ?? 'n/a'} · item: {event.item_id ?? 'n/a'} · claim: {event.claim_id ?? 'n/a'}
+                    </p>
+                    <p className="subtle">{new Date(event.created_at).toLocaleString()}</p>
+                  </article>
+                ))}
+              </div>
             )}
           </SectionCard>
         </>

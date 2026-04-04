@@ -10,6 +10,7 @@ class WebAuthSession(Base):
     __tablename__ = "web_auth_sessions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    csrf_token: Mapped[str | None] = mapped_column(String(128), nullable=True)
     link_code: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True, index=True)
     telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)

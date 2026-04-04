@@ -15,6 +15,16 @@ export type WhoAmI = {
   role?: 'admin' | 'moderator' | null
 }
 
+export type AuditEvent = {
+  id: number
+  event_type: string
+  actor_telegram_user_id?: number | null
+  item_id?: number | null
+  claim_id?: number | null
+  details?: Record<string, unknown>
+  created_at: string
+}
+
 export const fetchItems = async (params: { q?: string; status?: ItemStatus | 'all'; category?: string; lifecycle?: ItemLifecycle | 'all' }) => {
   const query: Record<string, string> = {}
   if (params.q) query.q = params.q
@@ -134,6 +144,11 @@ export const verifyItemAdmin = async (itemId: number, is_verified: boolean) => {
 
 export const lifecycleItemAdmin = async (itemId: number, action: 'resolve' | 'reopen' | 'delete') => {
   const response = await apiClient.post<Item>(`/items/admin/items/${itemId}/lifecycle`, { action })
+  return response.data
+}
+
+export const fetchAuditEvents = async (params: { event_type?: string; actor_telegram_user_id?: number; item_id?: number; claim_id?: number; limit?: number }) => {
+  const response = await apiClient.get<AuditEvent[]>('/items/admin/audit-events', { params })
   return response.data
 }
 

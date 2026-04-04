@@ -8,6 +8,7 @@ from app.core.auth import (
     get_session_from_cookie,
     require_admin,
     require_admin_or_moderator,
+    require_csrf_for_session,
     require_internal_access,
 )
 from app.models.auth_session import WebAuthSession
@@ -17,6 +18,7 @@ from app.schemas.item import (
     ClaimAction,
     ClaimCreate,
     ClaimRead,
+    AuditEventRead,
     CategorySuggestionRead,
     ImageUploadResult,
     ItemCreate,
@@ -34,6 +36,7 @@ from app.schemas.item import (
 )
 from app.services.item_service import ItemService
 from app.models.claim import ClaimStatus
+from app.services.audit import list_events
 
 router = APIRouter(prefix="/api/items", tags=["items"])
 
@@ -41,6 +44,7 @@ router = APIRouter(prefix="/api/items", tags=["items"])
 @router.post("", response_model=ItemRead, status_code=status.HTTP_201_CREATED)
 def create_item(
     payload: ItemCreate,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ItemRead:
@@ -58,6 +62,7 @@ def create_item(
 @router.post("/upload-image", response_model=ImageUploadResult)
 def upload_item_image(
     image: UploadFile,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
     db: Session = Depends(get_db),
@@ -102,6 +107,26 @@ def list_items_admin(
 ) -> list[ItemRead]:
     service = ItemService(db)
     return service.list_items(status=status, q=q, lifecycle=lifecycle, moderation_status=moderation_status)
+
+
+@router.get("/admin/audit-events", response_model=list[AuditEventRead])
+def list_audit_events(
+    limit: int = Query(default=50, ge=1, le=200),
+    event_type: str | None = Query(default=None),
+    actor_telegram_user_id: int | None = Query(default=None),
+    item_id: int | None = Query(default=None),
+    claim_id: int | None = Query(default=None),
+    _: AdminRole = Depends(require_admin_or_moderator),
+    db: Session = Depends(get_db),
+) -> list[AuditEventRead]:
+    return list_events(
+        db,
+        limit=limit,
+        event_type=event_type,
+        actor_telegram_user_id=actor_telegram_user_id,
+        item_id=item_id,
+        claim_id=claim_id,
+    )
 
 
 @router.get("/search", response_model=list[ItemPublicRead])
@@ -156,6 +181,7 @@ def list_my_items_internal(
 @router.post("/claim-requests", response_model=ClaimRead)
 def create_claim(
     payload: ClaimCreate,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ClaimRead:
@@ -220,7 +246,12 @@ def get_item(
 
 
 @router.patch("/{item_id}", response_model=ItemRead)
-def update_item(item_id: int, payload: ItemUpdate, db: Session = Depends(get_db)) -> ItemRead:
+def update_item(
+    item_id: int,
+    payload: ItemUpdate,
+    _: None = Depends(require_csrf_for_session),
+    db: Session = Depends(get_db),
+) -> ItemRead:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
@@ -229,7 +260,12 @@ def update_item(item_id: int, payload: ItemUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_item(item_id: int, _: AdminRole = Depends(require_admin), db: Session = Depends(get_db)) -> None:
+def delete_item(
+    item_id: int,
+    _: None = Depends(require_csrf_for_session),
+    __: AdminRole = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> None:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
@@ -248,6 +284,7 @@ def _actor_telegram_id(payload: ItemOwnerAction, auth_telegram_user_id: int | No
 def resolve_item(
     item_id: int,
     payload: ItemOwnerAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ItemRead:
@@ -264,6 +301,7 @@ def resolve_item(
 def reopen_item(
     item_id: int,
     payload: ItemOwnerAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ItemRead:
@@ -280,6 +318,7 @@ def reopen_item(
 def soft_delete_item(
     item_id: int,
     payload: ItemOwnerAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ItemRead:
@@ -293,7 +332,12 @@ def soft_delete_item(
 
 
 @router.post("/{item_id}/flag", response_model=ItemRead)
-def flag_item(item_id: int, payload: ItemFlagRequest, db: Session = Depends(get_db)) -> ItemRead:
+def flag_item(
+    item_id: int,
+    payload: ItemFlagRequest,
+    _: None = Depends(require_csrf_for_session),
+    db: Session = Depends(get_db),
+) -> ItemRead:
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
@@ -305,6 +349,7 @@ def flag_item(item_id: int, payload: ItemFlagRequest, db: Session = Depends(get_
 def moderate_item(
     item_id: int,
     payload: ItemModerationAction,
+    _: None = Depends(require_csrf_for_session),
     role: AdminRole = Depends(require_admin_or_moderator),
     db: Session = Depends(get_db),
 ) -> ItemRead:
@@ -319,9 +364,11 @@ def moderate_item(
 def verify_item(
     item_id: int,
     payload: ItemVerificationAction,
-    _: AdminRole = Depends(require_admin),
+    csrf_ok: None = Depends(require_csrf_for_session),
+    role: AdminRole = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ItemRead:
+    _ = (csrf_ok, role)
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
@@ -333,9 +380,11 @@ def verify_item(
 def admin_lifecycle(
     item_id: int,
     payload: ItemLifecycleAdminAction,
-    _: AdminRole = Depends(require_admin),
+    csrf_ok: None = Depends(require_csrf_for_session),
+    role: AdminRole = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ItemRead:
+    _ = (csrf_ok, role)
     service = ItemService(db)
     item = service.get_item(item_id)
     if not item:
@@ -369,6 +418,7 @@ def get_internal_matches(
 def approve_claim(
     claim_id: int,
     payload: ClaimAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ClaimRead:
@@ -387,6 +437,7 @@ def approve_claim(
 def reject_claim(
     claim_id: int,
     payload: ClaimAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ClaimRead:
@@ -405,6 +456,7 @@ def reject_claim(
 def cancel_claim(
     claim_id: int,
     payload: ClaimAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ClaimRead:
@@ -423,6 +475,7 @@ def cancel_claim(
 def complete_claim(
     claim_id: int,
     payload: ClaimAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ClaimRead:
@@ -448,6 +501,7 @@ def complete_claim(
 def not_match_claim(
     claim_id: int,
     payload: ClaimAction,
+    _: None = Depends(require_csrf_for_session),
     auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
     db: Session = Depends(get_db),
 ) -> ClaimRead:

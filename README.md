@@ -80,6 +80,7 @@ The codebase is intentionally modular for hackathon speed:
 - Auth/session endpoints:
   - `POST /api/auth/session`
   - `GET /api/auth/me`
+- `GET /api/auth/csrf`
 - `POST /api/auth/link-code`
 - `POST /api/auth/link/confirm` (used by bot `/link`)
 - `POST /api/auth/logout`
@@ -161,6 +162,15 @@ If the bot profile is enabled without a valid token, the bot container exits imm
   - `SEMANTIC_MATCHING_ENABLED` (default `true`)
   - `SEMANTIC_STRICT_MODE` (default `false`; if `true`, `/ready` fails unless semantic is `enabled`).
 
+
+## Web session CSRF + CORS behavior
+
+- Cookie-authenticated mutating requests require `X-CSRF-Token` matching the session token.
+- Frontend fetches token from `GET /api/auth/csrf` and sends it automatically for `POST/PUT/PATCH/DELETE` requests.
+- CSRF enforcement is session-aware: if no `lfb_session` cookie is present, internal token/bot flows are not blocked by CSRF checks.
+- CORS is explicit by default (`CORS_ORIGINS` list), with localhost defaults in `APP_ENV=dev`.
+- `*` with credentials is treated as unsafe; credentials are disabled if wildcard origins are configured.
+
 ## Runtime health and readiness
 
 - `GET /health` reports only process liveness.
@@ -176,8 +186,9 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 
 - Uploads are first saved as temporary files under `media/tmp`.
 - During item creation/update, referenced temporary media is promoted to permanent media.
-- Stale temporary files are cleaned on startup (TTL controlled by `MEDIA_TMP_TTL_HOURS`, default 24).
-- This strategy prevents long-lived orphan uploads while preserving current upload UX.
+- Stale temporary files are cleaned on startup and periodically (controlled by `MEDIA_CLEANUP_INTERVAL_MINUTES`, default 60).
+- If create/update fails after a temp upload is referenced, the temp file is removed immediately to reduce orphan risk.
+- TTL for stale temp files remains configurable with `MEDIA_TMP_TTL_HOURS` (default 24).
 
 ## Item Lifecycle & Management
 
@@ -214,7 +225,7 @@ If the bot profile is enabled without a valid token, the bot container exits imm
   - `ADMIN_TELEGRAM_USERNAMES` (fallback convenience)
 - Role mapping in this project:
   - `admin`: Telegram user ID matched
-  - `moderator`: Telegram username matched (when ID did not match)
+  - `moderator`: Telegram username matched **only when** `ADMIN_USERNAME_BOOTSTRAP_ENABLED=true` (temporary bootstrap mode)
 - `/admin` uses Telegram-linked session flow. No password-style admin login is required.
 - Backend is the source of truth for access decisions.
 - Optional fallback for development only: `ALLOW_ADMIN_SECRET_FALLBACK=true` with `X-Admin-Secret`.
@@ -222,11 +233,12 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 
 ### First-time bootstrap (username) ➜ migrate to user ID (recommended)
 
-1. Put your Telegram username in `ADMIN_TELEGRAM_USERNAMES` for first-time bootstrap.
+1. Temporarily set `ADMIN_USERNAME_BOOTSTRAP_ENABLED=true` and put your Telegram username in `ADMIN_TELEGRAM_USERNAMES`.
 2. Start backend+web+bot and link your website session with `/link <code>`.
 3. In Telegram bot, run `/whoami` and copy your numeric Telegram user id.
 4. Move to secure ID-based config:
    - add your ID to `ADMIN_TELEGRAM_USER_IDS`
+   - set `ADMIN_USERNAME_BOOTSTRAP_ENABLED=false`
    - remove username from `ADMIN_TELEGRAM_USERNAMES` (or leave empty)
 5. Restart services.
 
@@ -237,6 +249,7 @@ This keeps Telegram-linked auth as the source of truth while transitioning to th
 ```dotenv
 ADMIN_TELEGRAM_USER_IDS=
 ADMIN_TELEGRAM_USERNAMES=Leo0742
+ADMIN_USERNAME_BOOTSTRAP_ENABLED=true
 ALLOW_ADMIN_SECRET_FALLBACK=false
 ```
 
@@ -259,7 +272,8 @@ Tips:
    ```dotenv
    ADMIN_TELEGRAM_USER_IDS=
    ADMIN_TELEGRAM_USERNAMES=<your_telegram_username_without_@>
-   ALLOW_ADMIN_SECRET_FALLBACK=false
+   ADMIN_USERNAME_BOOTSTRAP_ENABLED=true
+ALLOW_ADMIN_SECRET_FALLBACK=false
    ```
 3. Start stack:
    ```bash
@@ -276,7 +290,8 @@ Tips:
    ```dotenv
    ADMIN_TELEGRAM_USER_IDS=<your_numeric_telegram_user_id>
    ADMIN_TELEGRAM_USERNAMES=
-   ALLOW_ADMIN_SECRET_FALLBACK=false
+   ADMIN_USERNAME_BOOTSTRAP_ENABLED=true
+ALLOW_ADMIN_SECRET_FALLBACK=false
    ```
 8. Restart backend and bot:
    ```bash

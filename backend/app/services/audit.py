@@ -1,3 +1,4 @@
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.models.audit_event import AuditEvent
@@ -20,3 +21,25 @@ def log_event(
         details=details or {},
     )
     db.add(event)
+
+
+def list_events(
+    db: Session,
+    *,
+    limit: int = 50,
+    event_type: str | None = None,
+    actor_telegram_user_id: int | None = None,
+    item_id: int | None = None,
+    claim_id: int | None = None,
+) -> list[AuditEvent]:
+    query: Select[tuple[AuditEvent]] = select(AuditEvent)
+    if event_type:
+        query = query.where(AuditEvent.event_type == event_type)
+    if actor_telegram_user_id is not None:
+        query = query.where(AuditEvent.actor_telegram_user_id == actor_telegram_user_id)
+    if item_id is not None:
+        query = query.where(AuditEvent.item_id == item_id)
+    if claim_id is not None:
+        query = query.where(AuditEvent.claim_id == claim_id)
+    query = query.order_by(AuditEvent.created_at.desc()).limit(limit)
+    return list(db.scalars(query).all())
