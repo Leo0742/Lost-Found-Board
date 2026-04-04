@@ -144,6 +144,7 @@ def test_admin_bulk_actions_and_observability(client, db_session_factory, monkey
     payload = observability.json()
     assert "duplicate_flags_24h" in payload
     assert "cleanup" in payload
+    assert "maintenance_status" in payload["cleanup"]
 
 
 def test_bulk_action_isolates_unexpected_item_errors(client, db_session_factory, monkeypatch):

@@ -107,7 +107,23 @@ export type AdminObservability = {
   blocked_admin_audit_queries_24h: number
   claims_created_24h: number
   unresolved_claims_total: number
-  cleanup: Record<string, unknown>
+  cleanup: {
+    anti_abuse_retention_days: number
+    audit_retention_days: number
+    media_temp_interval_minutes: number
+    media_orphan_interval_minutes: number
+    event_retention_interval_minutes: number
+    maintenance_status?: Record<string, {
+      last_attempt_at?: string | null
+      last_success_at?: string | null
+      last_error_at?: string | null
+      last_error?: string | null
+      last_removed_count?: number
+      total_removed?: number
+      runs?: number
+      failures?: number
+    }>
+  }
   semantic_runtime: Record<string, unknown>
 }
 

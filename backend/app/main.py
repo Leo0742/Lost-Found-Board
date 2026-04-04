@@ -20,6 +20,7 @@ from app.services.media import cleanup_stale_temp_uploads, ensure_media_dirs, cl
 from app.services.readiness import check_readiness
 from app.services.anti_abuse import cleanup_expired_events
 from app.services.audit import cleanup_expired_events as cleanup_expired_audit_events
+from app.services.maintenance_status import maintenance_status_store
 from app.db.session import SessionLocal
 
 settings = get_settings()
@@ -36,10 +37,12 @@ class MaintenanceStep:
 
 def _run_maintenance_step(step: MaintenanceStep) -> None:
     try:
-        removed = step.runner()
+        removed = step.runner() or 0
+        maintenance_status_store.mark_success(step_name=step.name, removed_count=removed)
         if removed:
             logger.info(step.success_log_template, removed)
-    except Exception:
+    except Exception as exc:
+        maintenance_status_store.mark_error(step_name=step.name, error=exc)
         logger.exception("Maintenance step '%s' failed.", step.name)
 
 

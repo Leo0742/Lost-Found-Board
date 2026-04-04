@@ -69,17 +69,24 @@ def list_events(
     return list(db.scalars(query).all())
 
 
-def cleanup_expired_events(db: Session, *, retention_days: int, batch_size: int = 2000) -> int:
+def cleanup_expired_events(
+    db: Session,
+    *,
+    retention_days: int,
+    batch_size: int = 2000,
+    max_batches: int = 50,
+) -> int:
     if retention_days <= 0:
         return 0
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
     total_removed = 0
-    while True:
+    batches = 0
+    while batches < max_batches:
         expired_ids = list(
             db.scalars(
                 select(AuditEvent.id)
                 .where(AuditEvent.created_at < cutoff)
-                .order_by(AuditEvent.created_at.asc())
+                .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
                 .limit(batch_size)
             )
         )
@@ -88,6 +95,7 @@ def cleanup_expired_events(db: Session, *, retention_days: int, batch_size: int 
         result = db.execute(delete(AuditEvent).where(AuditEvent.id.in_(expired_ids)))
         db.commit()
         total_removed += result.rowcount or 0
+        batches += 1
         if len(expired_ids) < batch_size:
             break
     return total_removed

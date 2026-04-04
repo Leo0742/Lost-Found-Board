@@ -43,10 +43,15 @@ export const AdminPage = () => {
     setAuditOffset,
     loadingItems,
     loadingAudit,
+    loadingStats,
     actionLoading,
     itemError,
     auditError,
+    statsError,
+    queueSummaryError,
+    observabilityError,
     actionMessage,
+    actionWarning,
     setActionMessage,
     loadItems,
     loadAudit,
@@ -70,7 +75,7 @@ export const AdminPage = () => {
         setRole(me.role ?? null)
         setIsAdmin(me.admin_access)
         if (me.admin_access) {
-          await Promise.all([loadItems(undefined, 0), loadAudit(0), loadStats()])
+          await Promise.allSettled([loadItems(undefined, 0, { forceSignals: true }), loadAudit(0), loadStats()])
           setItemsOffset(0)
           setAuditOffset(0)
         }
@@ -121,8 +126,12 @@ export const AdminPage = () => {
 
       {authLoading ? <LoadingGrid count={3} /> : null}
       {actionMessage ? <p className="notice">{actionMessage}</p> : null}
+      {actionWarning ? <p className="notice">Partial warning: {actionWarning}</p> : null}
       {itemError ? <p className="notice error">{itemError}</p> : null}
       {auditError ? <p className="notice error">{auditError}</p> : null}
+      {statsError ? <p className="notice error">{statsError}</p> : null}
+      {queueSummaryError ? <p className="notice error">{queueSummaryError}</p> : null}
+      {observabilityError ? <p className="notice error">{observabilityError}</p> : null}
 
       {!authLoading && !linked ? (
         <SectionCard title="Connect Telegram first" subtitle="Admin roles are bound to Telegram-linked identity.">
@@ -137,7 +146,7 @@ export const AdminPage = () => {
         <>
           <SectionCard title="Quick moderation queues" subtitle={`Role: ${role || 'none'}. Use presets for fast triage.`}>
             <QueuePresetControls onApply={(preset) => void applyPreset(preset)} />
-            <p className="subtle">High-risk flagged (24h): {queueSummary?.high_risk_flagged_24h ?? 0} · Stale pending (48h): {queueSummary?.stale_pending_48h ?? 0}</p>
+            <p className="subtle">High-risk flagged (24h): {queueSummary?.high_risk_flagged_24h ?? 0} · Stale pending (48h): {queueSummary?.stale_pending_48h ?? 0} {loadingStats ? '· Updating summary…' : ''}</p>
           </SectionCard>
 
           <SectionCard title="Queue filters" subtitle="Filter by moderation, lifecycle, actor, verification, and date range.">
@@ -188,6 +197,7 @@ export const AdminPage = () => {
           <SectionCard title="Operational visibility" subtitle="Live abuse + claims pressure indicators.">
             <p className="subtle">Duplicate flags 24h: {observability?.duplicate_flags_24h ?? 0} · Duplicate claims 24h: {observability?.duplicate_claims_24h ?? 0} · Claim pressure 24h: {observability?.claims_created_24h ?? 0}</p>
             <p className="subtle">Blocked audit queries 24h: {observability?.blocked_admin_audit_queries_24h ?? 0} · Runtime: {String(observability?.semantic_runtime?.state ?? 'unknown')}</p>
+            <p className="subtle">Maintenance: temp {String(observability?.cleanup?.maintenance_status?.temp_media_cleanup?.last_success_at ?? 'n/a')} · orphan {String(observability?.cleanup?.maintenance_status?.finalized_orphan_cleanup?.last_success_at ?? 'n/a')} · anti-abuse {String(observability?.cleanup?.maintenance_status?.anti_abuse_retention_cleanup?.last_success_at ?? 'n/a')} · audit {String(observability?.cleanup?.maintenance_status?.audit_retention_cleanup?.last_success_at ?? 'n/a')}</p>
           </SectionCard>
 
           <SectionCard title="All filtered reports" subtitle="Full moderation workspace with grouped actions and trust indicators.">

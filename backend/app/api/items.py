@@ -57,6 +57,7 @@ from app.schemas.item import (
 from app.services.anti_abuse import AbuseAction, RateLimitRule, client_ip_hash, enforce_rate_limit
 from app.services.audit import describe_event, list_events
 from app.services.item_service import ItemService
+from app.services.maintenance_status import maintenance_status_store
 from app.services.matching import semantic_runtime_status
 
 router = APIRouter(prefix="/api/items", tags=["items"])
@@ -906,6 +907,7 @@ def admin_observability(
             "media_temp_interval_minutes": get_settings().media_cleanup_interval_minutes,
             "media_orphan_interval_minutes": get_settings().media_orphan_cleanup_interval_minutes,
             "event_retention_interval_minutes": get_settings().event_retention_cleanup_interval_minutes,
+            "maintenance_status": maintenance_status_store.snapshot(),
         },
         semantic_runtime={"state": semantic.state.value, "detail": semantic.detail},
     )
