@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.schemas.auth import (
     WhoAmIResponse,
 )
 from app.services.audit import log_event
+from app.services.anti_abuse import RateLimitRule, client_ip_hash, enforce_rate_limit
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -103,12 +104,25 @@ def create_link_code(
     _: None = Depends(require_csrf_for_session),
     db: Session = Depends(get_db),
     session: WebAuthSession | None = Depends(get_session_from_cookie),
+    request: Request = None,
 ) -> LinkCodeResponse:
     created = False
     if not session:
         session = create_web_session(db)
         created = True
     settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="link_code_create",
+        rule=RateLimitRule(
+            window_seconds=settings.link_code_rate_limit_window_minutes * 60,
+            max_hits=settings.link_code_rate_limit_max,
+            error_message="Too many link code requests. Please wait before generating another code.",
+        ),
+        actor_telegram_user_id=session.telegram_user_id if session else None,
+        session_id=session.id if session else None,
+        ip_hash=client_ip_hash(request),
+    )
     expires_at = _now() + timedelta(minutes=settings.web_link_code_ttl_minutes)
     code = generate_link_code()
     while db.scalar(select(WebAuthSession).where(WebAuthSession.link_code == code)):
@@ -125,7 +139,21 @@ def create_link_code(
 
 
 @router.post("/link/confirm", response_model=WhoAmIResponse)
-def confirm_link(payload: LinkConfirmRequest, response: Response, db: Session = Depends(get_db)) -> WhoAmIResponse:
+def confirm_link(payload: LinkConfirmRequest, response: Response, request: Request, db: Session = Depends(get_db)) -> WhoAmIResponse:
+    settings = get_settings()
+    enforce_rate_limit(
+        db,
+        action="link_confirm_attempt",
+        rule=RateLimitRule(
+            window_seconds=settings.link_confirm_rate_limit_window_minutes * 60,
+            max_hits=settings.link_confirm_rate_limit_max,
+            error_message="Too many link confirmation attempts. Please wait and try again.",
+        ),
+        actor_telegram_user_id=payload.telegram_user_id,
+        session_id=None,
+        ip_hash=client_ip_hash(request),
+        fingerprint=payload.code.upper(),
+    )
     session = db.scalar(select(WebAuthSession).where(WebAuthSession.link_code == payload.code.upper()))
     if not session or not session.link_code_expires_at or _as_utc(session.link_code_expires_at) < _now():
         raise HTTPException(status_code=404, detail="Link code is invalid or expired")

@@ -13,7 +13,7 @@ Path(os.environ["MEDIA_ROOT"]).mkdir(parents=True, exist_ok=True)
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import audit_event, auth_session, claim, item  # noqa: F401
+from app.models import anti_abuse_event, audit_event, auth_session, claim, item  # noqa: F401
 
 
 @pytest.fixture()
