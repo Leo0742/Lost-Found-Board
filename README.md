@@ -152,6 +152,32 @@ If the bot profile is enabled without a valid token, the bot container exits imm
 - Model runs locally on CPU and model files are cached on first use.
 - No external inference API calls are used (local inference only).
 - You can override model via env: `EMBEDDING_MODEL_NAME=<model-name>`.
+- Runtime semantic state is explicit:
+  - `enabled`: model loaded and semantic score is active.
+  - `degraded`: semantic model failed, fallback rule/fuzzy matching remains active.
+  - `disabled`: semantic matching disabled by config.
+- Startup behavior is controlled by:
+  - `EMBEDDING_WARMUP_ON_STARTUP` (default `true`)
+  - `SEMANTIC_MATCHING_ENABLED` (default `true`)
+  - `SEMANTIC_STRICT_MODE` (default `false`; if `true`, `/ready` fails unless semantic is `enabled`).
+
+## Runtime health and readiness
+
+- `GET /health` reports only process liveness.
+- `GET /ready` verifies operational readiness and returns a machine-readable JSON payload:
+  - database query check
+  - critical settings/service initialization
+  - semantic matching runtime state and detail
+  - media storage read/write availability
+  - required internal config presence
+- Degraded semantic mode is considered ready by default (fallback matching works). Enable strict mode only when semantic is a hard requirement.
+
+## Media upload lifecycle
+
+- Uploads are first saved as temporary files under `media/tmp`.
+- During item creation/update, referenced temporary media is promoted to permanent media.
+- Stale temporary files are cleaned on startup (TTL controlled by `MEDIA_TMP_TTL_HOURS`, default 24).
+- This strategy prevents long-lived orphan uploads while preserving current upload UX.
 
 ## Item Lifecycle & Management
 

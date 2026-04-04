@@ -9,7 +9,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/lost_found"
     cors_origins: str = "*"
     embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    semantic_matching_enabled: bool = True
+    semantic_strict_mode: bool = False
     embedding_warmup_on_startup: bool = True
+    media_tmp_ttl_hours: int = 24
     media_root: str = "/app/media"
     media_url_prefix: str = "/media"
     media_max_bytes: int = 5 * 1024 * 1024
