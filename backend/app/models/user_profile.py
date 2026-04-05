@@ -20,6 +20,9 @@ class UserProfile(Base):
     pickup_location: Mapped[str | None] = mapped_column(String(160), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contact_methods_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contact_visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="all", server_default="all")
+    contact_visibility_method_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

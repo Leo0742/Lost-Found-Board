@@ -51,7 +51,11 @@ export const NewItemPage = () => {
       if (!telegramUsername && profile.telegram_username) {
         setTelegramUsername(`@${String(profile.telegram_username).replace(/^@/, '')}`)
       }
-      if (profile.preferred_contact_method && profile.preferred_contact_details && !contactName) {
+      const exposedContacts = profile.exposed_contact_methods ?? []
+      if (!contactName && exposedContacts.length > 0) {
+        const primary = exposedContacts[0]
+        setContactName(`${primary.name}: ${primary.value}`.slice(0, 80))
+      } else if (profile.preferred_contact_method && profile.preferred_contact_details && !contactName) {
         setContactName(`${profile.preferred_contact_method}: ${profile.preferred_contact_details}`.slice(0, 80))
       }
     }
