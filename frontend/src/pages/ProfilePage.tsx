@@ -88,35 +88,79 @@ const useYandexSuggest = (query: string) => {
 
 const MapAddressPicker = ({ onClose, onSelect }: { onClose: () => void; onSelect: (result: MapPickerResult) => void }) => {
   const mapRef = useRef<HTMLDivElement | null>(null)
+  const mapInstanceRef = useRef<{
+    events: { add: (name: string, cb: (event: { get: (key: string) => unknown }) => void) => void }
+    geoObjects: { removeAll: () => void; add: (obj: unknown) => void }
+    setCenter: (coords: number[], zoom?: number) => void
+  } | null>(null)
   const [selected, setSelected] = useState<MapPickerResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [resolving, setResolving] = useState(false)
+
+  const formatReadableAddress = (meta?: { Address?: { Components?: Array<{ kind?: string; name?: string }> }; text?: string }) => {
+    const components = meta?.Address?.Components ?? []
+    const find = (kinds: string[]) => components.find((row) => row.kind && kinds.includes(row.kind))?.name?.trim()
+    const city = find(['locality', 'province', 'area']) ?? ''
+    const street = find(['street']) ?? ''
+    const house = find(['house']) ?? find(['premise']) ?? ''
+    const compact = [city, street, house].filter(Boolean).join(', ')
+    return compact || meta?.text || null
+  }
+
+  const resolvePoint = async (coords: [number, number]) => {
+    setResolving(true)
+    setError(null)
+    try {
+      const url = new URL('https://geocode-maps.yandex.ru/1.x/')
+      url.searchParams.set('apikey', YANDEX_MAPS_API_KEY)
+      url.searchParams.set('format', 'json')
+      url.searchParams.set('geocode', `${coords[1]},${coords[0]}`)
+      url.searchParams.set('results', '6')
+      const response = await fetch(url.toString())
+      if (!response.ok) throw new Error('geocode-failed')
+      const payload = await response.json() as {
+        response?: {
+          GeoObjectCollection?: {
+            featureMember?: Array<{
+              GeoObject?: {
+                metaDataProperty?: { GeocoderMetaData?: { text?: string; precision?: string; Address?: { Components?: Array<{ kind?: string; name?: string }> } } }
+              }
+            }>
+          }
+        }
+      }
+      const members = payload.response?.GeoObjectCollection?.featureMember ?? []
+      const houseFirst = members.find((item) => {
+        const parts = item.GeoObject?.metaDataProperty?.GeocoderMetaData?.Address?.Components ?? []
+        return parts.some((part) => part.kind === 'house')
+      }) ?? members[0]
+      const geoMeta = houseFirst?.GeoObject?.metaDataProperty?.GeocoderMetaData
+      const formatted = formatReadableAddress(geoMeta)
+      if (!formatted) throw new Error('no-address')
+      setSelected({ address_text: formatted, latitude: coords[0], longitude: coords[1] })
+    } catch {
+      setError('Could not resolve this point to a real address. Try another building or type manually.')
+      setSelected(null)
+    } finally {
+      setResolving(false)
+    }
+  }
 
   useEffect(() => {
     if (!YANDEX_MAPS_API_KEY || !mapRef.current) return
     const mountMap = () => {
       if (!window.ymaps || !mapRef.current) return
       const map = new window.ymaps.Map(mapRef.current, { center: [55.751244, 37.618423], zoom: 14 })
+      mapInstanceRef.current = map
       map.events.add('click', async (event) => {
-        const coords = event.get('coords').getCoordinates()
+        const rawCoords = event.get('coords') as unknown
+        if (!Array.isArray(rawCoords) || rawCoords.length < 2) return
+        const coords: [number, number] = [Number(rawCoords[0]), Number(rawCoords[1])]
+        if (!Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) return
         map.geoObjects.removeAll()
         map.geoObjects.add(new window.ymaps!.Placemark(coords))
-        try {
-          const url = new URL('https://geocode-maps.yandex.ru/1.x/')
-          url.searchParams.set('apikey', YANDEX_MAPS_API_KEY)
-          url.searchParams.set('format', 'json')
-          url.searchParams.set('geocode', `${coords[1]},${coords[0]}`)
-          const response = await fetch(url.toString())
-          if (!response.ok) return
-          const payload = await response.json() as { response?: { GeoObjectCollection?: { featureMember?: Array<{ GeoObject?: { metaDataProperty?: { GeocoderMetaData?: { text?: string } } } }> } } }
-          const text = payload.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.metaDataProperty?.GeocoderMetaData?.text
-          if (text) {
-            setSelected({ address_text: text, latitude: coords[0], longitude: coords[1] })
-          }
-        } catch {
-          setError('Reverse geocoding failed. You can still type manually.')
-        }
+        await resolvePoint(coords)
       })
-      ;(window as unknown as { __lfbMap?: unknown }).__lfbMap = map
     }
 
     if (!window.ymaps) {
@@ -138,9 +182,11 @@ const MapAddressPicker = ({ onClose, onSelect }: { onClose: () => void; onSelect
     }
     navigator.geolocation.getCurrentPosition((position) => {
       const coords: [number, number] = [position.coords.latitude, position.coords.longitude]
-      const map = (window as unknown as { __lfbMap?: { setCenter: (coords: number[], zoom?: number) => void } }).__lfbMap
+      const map = mapInstanceRef.current
       map?.setCenter(coords, 17)
-      setSelected((prev) => prev ?? { address_text: 'Current location selected. Click exact building on map to confirm.', latitude: coords[0], longitude: coords[1] })
+      map?.geoObjects.removeAll()
+      map?.geoObjects.add(new window.ymaps!.Placemark(coords))
+      void resolvePoint(coords)
     }, () => setError('Unable to get your location.'))
   }
 
@@ -153,9 +199,10 @@ const MapAddressPicker = ({ onClose, onSelect }: { onClose: () => void; onSelect
         <div className="actions-row">
           <button type="button" className="button-neutral button-sm" onClick={useGeolocation}>Use geolocation</button>
           <button type="button" className="button-neutral button-sm" onClick={onClose}>Cancel</button>
-          <button type="button" className="button-sm" disabled={!selected?.address_text} onClick={() => selected && onSelect(selected)}>Use selected address</button>
+          <button type="button" className="button-sm" disabled={!selected?.address_text || resolving} onClick={() => selected && onSelect(selected)}>Use selected address</button>
         </div>
-        {selected?.address_text ? <p className="subtle">Selected: {selected.address_text}</p> : <p className="subtle">Click a building on map to reverse geocode.</p>}
+        {resolving ? <p className="subtle">Resolving address…</p> : null}
+        {selected?.address_text ? <p className="subtle">Selected: {selected.address_text}</p> : <p className="subtle">Click a building/house on map to resolve city, street, house.</p>}
         {error ? <p className="notice error">{error}</p> : null}
       </div>
     </div>
