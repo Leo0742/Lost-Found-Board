@@ -42,6 +42,26 @@ export const ProfilePage = () => {
   const [preferredContactDetails, setPreferredContactDetails] = useState('')
   const [pickupLocation, setPickupLocation] = useState('')
 
+  const applyProfile = (next: UserProfile) => {
+    setProfile(next)
+    setDisplayName(next.display_name ?? '')
+    setPreferredContactMethod(next.preferred_contact_method ?? 'telegram')
+    setPreferredContactDetails(next.preferred_contact_details ?? '')
+    setPickupLocation(next.pickup_location ?? '')
+  }
+
+  const fetchProfileWithAvatarSync = async () => {
+    let latest = await fetchMyProfile({ bypassCache: true })
+    applyProfile(latest)
+    if (latest.telegram_avatar_url || latest.avatar_url) return
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1200))
+      latest = await fetchMyProfile({ bypassCache: true })
+      applyProfile(latest)
+      if (latest.telegram_avatar_url || latest.avatar_url) return
+    }
+  }
+
   const load = async () => {
     setLoading(true)
     setError(null)
@@ -54,11 +74,7 @@ export const ProfilePage = () => {
         return
       }
       const meProfile = await fetchMyProfile({ bypassCache: true })
-      setProfile(meProfile)
-      setDisplayName(meProfile.display_name ?? '')
-      setPreferredContactMethod(meProfile.preferred_contact_method ?? 'telegram')
-      setPreferredContactDetails(meProfile.preferred_contact_details ?? '')
-      setPickupLocation(meProfile.pickup_location ?? '')
+      applyProfile(meProfile)
     } catch {
       setError(t('profile.loadFailed'))
     } finally {
@@ -81,14 +97,9 @@ export const ProfilePage = () => {
         try {
           const me = await getAuthMe({ forceRefresh: true })
           if (!me.linked) return
-          const meProfile = await fetchMyProfile({ bypassCache: true })
           setLinked(true)
           setRole(me.role ?? null)
-          setProfile(meProfile)
-          setDisplayName(meProfile.display_name ?? '')
-          setPreferredContactMethod(meProfile.preferred_contact_method ?? 'telegram')
-          setPreferredContactDetails(meProfile.preferred_contact_details ?? '')
-          setPickupLocation(meProfile.pickup_location ?? '')
+          await fetchProfileWithAvatarSync()
           setLinkCode(null)
           setCopied(false)
           setMessage(t('profile.linkDetected'))

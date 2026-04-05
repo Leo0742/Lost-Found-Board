@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import { apiClient, refreshCsrfToken } from './client'
 import { Item, NewItemPayload, ItemStatus, MatchResult, ItemLifecycle } from '../types/item'
 import { cachedCall, invalidateCache } from './cache'
 
@@ -232,6 +232,7 @@ export const suggestCategory = async (title: string) => {
 
 export const unlinkTelegram = async () => {
   await apiClient.post('/auth/unlink')
+  await refreshCsrfToken()
   invalidateCache('auth:')
 }
 
