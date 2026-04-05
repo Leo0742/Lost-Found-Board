@@ -660,3 +660,36 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
   gap: .5rem;
   flex-wrap: wrap;
 }
+
+
+.profile-identity.compact {
+  grid-template-columns: 58px 1fr;
+}
+
+.button-sm {
+  padding: .38rem .62rem;
+  font-size: .84rem;
+}
+
+.profile-contact-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .5rem .65rem;
+  background: var(--surface-muted);
+}
+
+.profile-add-contact-inline {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr auto;
+  gap: .45rem;
+}
+
+@media (max-width: 720px) {
+  .profile-add-contact-inline {
+    grid-template-columns: 1fr;
+  }
+}

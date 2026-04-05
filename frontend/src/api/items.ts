@@ -43,6 +43,12 @@ export type ModerationSignal = {
 
 
 
+export type ProfileContactMethod = {
+  id: string
+  name: string
+  value: string
+}
+
 export type UserProfile = {
   telegram_user_id: number
   telegram_username?: string | null
@@ -53,6 +59,10 @@ export type UserProfile = {
   pickup_location?: string | null
   avatar_url?: string | null
   telegram_avatar_url?: string | null
+  contact_methods?: ProfileContactMethod[]
+  exposed_contact_methods?: ProfileContactMethod[]
+  contact_visibility?: "all" | "one"
+  contact_visibility_method_id?: string | null
   updated_at?: string | null
 }
 
@@ -62,6 +72,9 @@ export type UserProfileUpdate = {
   preferred_contact_details?: string | null
   pickup_location?: string | null
   avatar_url?: string | null
+  contact_methods?: ProfileContactMethod[] | null
+  contact_visibility?: "all" | "one"
+  contact_visibility_method_id?: string | null
 }
 
 export type AdminItemsParams = {

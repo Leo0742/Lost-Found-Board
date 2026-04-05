@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchMyProfile, generateLinkCode, getAuthMe, unlinkTelegram, updateMyProfile, UserProfile } from '../api/items'
-import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
+import { ProfileContactMethod, fetchMyProfile, generateLinkCode, getAuthMe, unlinkTelegram, updateMyProfile, UserProfile } from '../api/items'
+import { EmptyState, LoadingGrid, SectionCard } from '../components/ui'
 import { useSettings } from '../context/SettingsContext'
 
 const initialsFrom = (name?: string | null, fallback = 'U') => {
@@ -26,28 +26,36 @@ const normalizeAvatarUrl = (value?: string | null) => {
   return `/media/${value.replace(/^\/+/, '')}`
 }
 
+const randomCustomId = () => `custom-${Math.random().toString(36).slice(2, 10)}`
+
 export const ProfilePage = () => {
-  const { t, language, theme } = useSettings()
+  const { t } = useSettings()
   const [loading, setLoading] = useState(true)
   const [linked, setLinked] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
-  const [role, setRole] = useState<'admin' | 'moderator' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   const [displayName, setDisplayName] = useState('')
-  const [preferredContactMethod, setPreferredContactMethod] = useState('telegram')
-  const [preferredContactDetails, setPreferredContactDetails] = useState('')
   const [pickupLocation, setPickupLocation] = useState('')
+  const [customContacts, setCustomContacts] = useState<ProfileContactMethod[]>([])
+  const [visibilityMode, setVisibilityMode] = useState<'all' | 'one'>('all')
+  const [visibilityMethodId, setVisibilityMethodId] = useState<string>('')
+
+  const [showAddContact, setShowAddContact] = useState(false)
+  const [newContactName, setNewContactName] = useState('')
+  const [newContactValue, setNewContactValue] = useState('')
 
   const applyProfile = (next: UserProfile) => {
     setProfile(next)
     setDisplayName(next.display_name ?? '')
-    setPreferredContactMethod(next.preferred_contact_method ?? 'telegram')
-    setPreferredContactDetails(next.preferred_contact_details ?? '')
     setPickupLocation(next.pickup_location ?? '')
+    setCustomContacts((next.contact_methods ?? []).filter((row) => row.id !== 'telegram'))
+    const nextVisibility = next.contact_visibility === 'one' ? 'one' : 'all'
+    setVisibilityMode(nextVisibility)
+    setVisibilityMethodId(next.contact_visibility_method_id ?? '')
   }
 
   const fetchProfileWithAvatarSync = async () => {
@@ -68,13 +76,11 @@ export const ProfilePage = () => {
     try {
       const me = await getAuthMe({ forceRefresh: true })
       setLinked(me.linked)
-      setRole(me.role ?? null)
       if (!me.linked) {
         setProfile(null)
         return
       }
-      const meProfile = await fetchMyProfile({ bypassCache: true })
-      applyProfile(meProfile)
+      applyProfile(await fetchMyProfile({ bypassCache: true }))
     } catch {
       setError(t('profile.loadFailed'))
     } finally {
@@ -98,31 +104,54 @@ export const ProfilePage = () => {
           const me = await getAuthMe({ forceRefresh: true })
           if (!me.linked) return
           setLinked(true)
-          setRole(me.role ?? null)
           await fetchProfileWithAvatarSync()
           setLinkCode(null)
           setCopied(false)
           setMessage(t('profile.linkDetected'))
         } catch {
-          // keep polling until linked or code cleared
+          // wait for link
         }
       })()
     }, 3000)
     return () => window.clearInterval(interval)
   }, [linkCode, linked, t])
 
+  const allMethods = useMemo(() => {
+    const telegram = profile?.telegram_username
+      ? [{ id: 'telegram', name: 'Telegram', value: `@${String(profile.telegram_username).replace(/^@/, '')}` }]
+      : []
+    return [...telegram, ...customContacts]
+  }, [customContacts, profile?.telegram_username])
+
+  const dirty = useMemo(() => {
+    if (!profile) return false
+    const originalCustom = (profile.contact_methods ?? []).filter((row) => row.id !== 'telegram')
+    return (
+      displayName !== (profile.display_name ?? '')
+      || pickupLocation !== (profile.pickup_location ?? '')
+      || JSON.stringify(customContacts) !== JSON.stringify(originalCustom)
+      || visibilityMode !== (profile.contact_visibility === 'one' ? 'one' : 'all')
+      || (visibilityMode === 'one' && visibilityMethodId !== (profile.contact_visibility_method_id ?? ''))
+    )
+  }, [customContacts, displayName, pickupLocation, profile, visibilityMethodId, visibilityMode])
+
   const onSave = async (event: FormEvent) => {
     event.preventDefault()
+    if (!dirty) return
     setError(null)
     setMessage(null)
     try {
+      const payloadMethodId = visibilityMode === 'one' ? visibilityMethodId || null : null
       const next = await updateMyProfile({
         display_name: displayName,
-        preferred_contact_method: preferredContactMethod,
-        preferred_contact_details: preferredContactDetails,
         pickup_location: pickupLocation,
+        contact_methods: customContacts,
+        contact_visibility: visibilityMode,
+        contact_visibility_method_id: payloadMethodId,
+        preferred_contact_method: null,
+        preferred_contact_details: null,
       })
-      setProfile(next)
+      applyProfile(next)
       setMessage(t('profile.saved'))
     } catch {
       setError(t('profile.saveFailed'))
@@ -138,116 +167,148 @@ export const ProfilePage = () => {
 
   return (
     <section className="stack">
-      <PageHero
-        title={t('profile.title')}
-        subtitle={t('profile.subtitle')}
-        stats={[
-          { label: t('profile.stats.telegram'), value: linked ? t('profile.linked') : t('profile.unlinked') },
-          { label: t('profile.stats.language'), value: language === 'ru' ? 'Русский' : 'English' },
-          { label: t('profile.stats.theme'), value: theme },
-          { label: t('profile.stats.role'), value: role ?? 'member' },
-        ]}
-      />
-
-      {loading ? <LoadingGrid count={3} /> : null}
+      {loading ? <LoadingGrid count={2} /> : null}
       {error ? <p className="notice error">{error}</p> : null}
       {message ? <p className="notice success">{message}</p> : null}
 
-      {!loading ? (
-        <div className="layout-split">
-          <SectionCard title={t('profile.identity')} subtitle={t('profile.identitySub')}>
-            <div className="profile-identity">
+      {!loading && linked && profile ? (
+        <SectionCard title={t('profile.identity')}>
+          <form className="form stack" onSubmit={onSave}>
+            <div className="profile-identity compact">
               {shownAvatarUrl ? (
                 <img className="profile-avatar" src={shownAvatarUrl ?? ''} alt={displayName || 'avatar'} />
               ) : (
                 <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">{avatarFallback}</div>
               )}
-              <div className="stack" style={{ gap: '.35rem' }}>
-                <strong>{displayName || profile?.telegram_display_name || profile?.telegram_username || t('profile.unknown')}</strong>
-                <span className="subtle">{profile?.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
-                <span className={`badge ${linked ? 'approved' : 'pending'}`}>{linked ? t('profile.linked') : t('profile.unlinked')}</span>
+              <div className="stack" style={{ gap: '.25rem' }}>
+                <strong>{displayName || profile.telegram_display_name || profile.telegram_username || t('profile.unknown')}</strong>
+                <span className="subtle">{profile.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
               </div>
             </div>
-          </SectionCard>
 
-          <SectionCard title={t('profile.telegram')}>
-            {!linked ? (
-              <div className="stack compact-stack">
-                <div className="profile-link-code compact">
-                  <button type="button" onClick={async () => {
-                    const generated = await generateLinkCode()
-                    const command = `/link ${generated.code}`
-                    setLinkCode(generated.code)
-                    setCopied(false)
-                    setMessage(null)
-                    try {
-                      await navigator.clipboard.writeText(command)
-                      setCopied(true)
-                    } catch {
-                      // keep command visible for manual copy
-                    }
-                  }}>{t('profile.generateCopy')}</button>
-                  {linkCommand ? (
-                    <button
-                      type="button"
-                      className="button-neutral"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(linkCommand)
-                          setError(null)
-                          setCopied(true)
-                        } catch {
-                          setError(t('profile.copyFailed'))
-                        }
-                      }}
-                    >
-                      {copied ? t('profile.copied') : t('profile.copyCommand')}
-                    </button>
-                  ) : null}
-                </div>
-                {linkCommand ? <code className="profile-link-command">{linkCommand}</code> : null}
-                {linkCommand ? <span className="subtle">{t('profile.waitingForLink')}</span> : null}
-              </div>
-            ) : (
-              <div className="stack compact-stack">
-                <div className="profile-linked-row">
-                  <span className={`badge ${linked ? 'approved' : 'pending'}`}>{linked ? t('profile.linked') : t('profile.unlinked')}</span>
-                  <span className="subtle">{profile?.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
-                </div>
-                <button className="button-danger" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
-              </div>
-            )}
-          </SectionCard>
-        </div>
-      ) : null}
+            <div className="profile-link-code compact">
+              {linked ? (
+                <button className="button-danger button-sm" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
+              ) : null}
+            </div>
 
-      {!loading && linked ? (
-        <SectionCard title={t('profile.contactPrefs')} subtitle={t('profile.contactPrefsSub')}>
-          <form className="form stack" onSubmit={onSave}>
             <label>{t('profile.displayName')}
               <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} />
-            </label>
-            <label>{t('profile.contactMethod')}
-              <select value={preferredContactMethod} onChange={(event) => setPreferredContactMethod(event.target.value)}>
-                <option value="telegram">Telegram</option>
-                <option value="phone">Phone</option>
-                <option value="email">Email</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
-            <label>{t('profile.contactDetails')}
-              <input value={preferredContactDetails} onChange={(event) => setPreferredContactDetails(event.target.value)} maxLength={255} placeholder={t('profile.contactPlaceholder')} />
             </label>
             <label>{t('profile.pickupLocation')}
               <input value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} maxLength={160} placeholder={t('profile.pickupPlaceholder')} />
             </label>
-            <button type="submit">{t('profile.save')}</button>
+
+            <div className="stack compact-stack">
+              <strong>{t('profile.contactPrefs')}</strong>
+              {allMethods.map((row) => (
+                <div className="profile-contact-row" key={row.id}>
+                  <span><strong>{row.name}</strong> <span className="subtle">{row.value}</span></span>
+                  {row.id !== 'telegram' ? (
+                    <button
+                      type="button"
+                      className="button-neutral button-sm"
+                      onClick={() => {
+                        setCustomContacts((prev) => prev.filter((entry) => entry.id !== row.id))
+                        if (visibilityMethodId === row.id) {
+                          setVisibilityMode('all')
+                          setVisibilityMethodId('')
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : <span className="badge approved">Linked</span>}
+                </div>
+              ))}
+
+              {!showAddContact ? (
+                <button className="button-neutral button-sm" type="button" onClick={() => setShowAddContact(true)}>Add another contact method</button>
+              ) : (
+                <div className="profile-add-contact-inline">
+                  <input value={newContactName} maxLength={40} placeholder="Contact name" onChange={(e) => setNewContactName(e.target.value)} />
+                  <input value={newContactValue} maxLength={255} placeholder="Contact value" onChange={(e) => setNewContactValue(e.target.value)} />
+                  <button
+                    type="button"
+                    className="button-sm"
+                    onClick={() => {
+                      const name = newContactName.trim()
+                      const value = newContactValue.trim()
+                      if (!name || !value) return
+                      setCustomContacts((prev) => [...prev, { id: randomCustomId(), name, value }])
+                      setNewContactName('')
+                      setNewContactValue('')
+                      setShowAddContact(false)
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
+
+              <label>Contact visibility
+                <select value={visibilityMode} onChange={(event) => setVisibilityMode(event.target.value as 'all' | 'one')}>
+                  <option value="all">Expose all contacts</option>
+                  <option value="one">Expose one contact</option>
+                </select>
+              </label>
+
+              {visibilityMode === 'one' ? (
+                <label>Exposed contact
+                  <select value={visibilityMethodId} onChange={(event) => setVisibilityMethodId(event.target.value)}>
+                    <option value="">Select contact</option>
+                    {allMethods.map((row) => <option key={row.id} value={row.id}>{row.name}: {row.value}</option>)}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+
+            {dirty ? <button type="submit">{t('profile.save')}</button> : null}
           </form>
         </SectionCard>
       ) : null}
 
       {!loading && !linked ? (
-        <EmptyState title={t('profile.linkToEditTitle')} subtitle={t('profile.linkToEditSub')} action={<Link to="/"><button type="button" className="button-neutral">{t('nav.items')}</button></Link>} />
+        <SectionCard title={t('profile.telegram')}>
+          <div className="profile-identity compact">
+            <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">U</div>
+            <div className="stack" style={{ gap: '.25rem' }}>
+              <strong>{t('profile.unknown')}</strong>
+              <span className="subtle">{t('profile.noUsername')}</span>
+            </div>
+          </div>
+          <div className="stack compact-stack">
+            <div className="profile-link-code compact">
+              <button type="button" className="button-sm" onClick={async () => {
+                const generated = await generateLinkCode()
+                const command = `/link ${generated.code}`
+                setLinkCode(generated.code)
+                setCopied(false)
+                setMessage(null)
+                try {
+                  await navigator.clipboard.writeText(command)
+                  setCopied(true)
+                } catch {
+                  // command visible for manual copy
+                }
+              }}>{t('profile.generateCopy')}</button>
+              {linkCommand ? (
+                <button type="button" className="button-neutral button-sm" onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(linkCommand)
+                    setError(null)
+                    setCopied(true)
+                  } catch {
+                    setError(t('profile.copyFailed'))
+                  }
+                }}>{copied ? t('profile.copied') : t('profile.copyCommand')}</button>
+              ) : null}
+            </div>
+            {linkCommand ? <code className="profile-link-command">{linkCommand}</code> : null}
+            {linkCommand ? <span className="subtle">{t('profile.waitingForLink')}</span> : null}
+          </div>
+          <EmptyState title={t('profile.linkToEditTitle')} subtitle={t('profile.linkToEditSub')} action={<Link to="/"><button type="button" className="button-neutral">{t('nav.items')}</button></Link>} />
+        </SectionCard>
       ) : null}
     </section>
   )

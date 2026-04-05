@@ -18,6 +18,8 @@ from app.services.search_utils import rank_items
 from app.services.audit import log_event
 from app.services.anti_abuse import AbuseAction, has_recent_duplicate, normalize_reason, record_signal
 from app.services.media import finalize_uploaded_image, is_tmp_path, remove_media_file
+from app.models.user_profile import UserProfile
+from app.services.profile_contacts import exposed_contact_summary
 
 
 class ItemService:
@@ -565,9 +567,19 @@ class ItemService:
         if claim.status in {ClaimStatus.APPROVED, ClaimStatus.COMPLETED} and viewer_telegram_user_id:
             if viewer_telegram_user_id in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
                 if source:
-                    shared_source_contact = source.telegram_username or source.contact_name
+                    source_profile = None
+                    if source.owner_telegram_user_id:
+                        source_profile = self.db.scalar(select(UserProfile).where(UserProfile.telegram_user_id == source.owner_telegram_user_id))
+                    shared_source_contact = (
+                        exposed_contact_summary(source_profile) if source_profile else None
+                    ) or source.telegram_username or source.contact_name
                 if target:
-                    shared_target_contact = target.telegram_username or target.contact_name
+                    target_profile = None
+                    if target.owner_telegram_user_id:
+                        target_profile = self.db.scalar(select(UserProfile).where(UserProfile.telegram_user_id == target.owner_telegram_user_id))
+                    shared_target_contact = (
+                        exposed_contact_summary(target_profile) if target_profile else None
+                    ) or target.telegram_username or target.contact_name
         from app.schemas.item import ClaimRead
 
         return ClaimRead(

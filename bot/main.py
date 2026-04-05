@@ -648,8 +648,13 @@ async def cmd_new(message: Message, state: FSMContext) -> None:
     if user:
         try:
             profile = await api.get_profile_internal(user.id)
+            exposed = profile.get("exposed_contact_methods") or []
+            default_contact = None
+            if exposed:
+                first = exposed[0]
+                default_contact = f"{first.get('name')}: {first.get('value')}"
             await state.update_data(
-                profile_default_contact=profile.get("preferred_contact_details") or profile.get("display_name"),
+                profile_default_contact=default_contact or profile.get("preferred_contact_details") or profile.get("display_name"),
                 profile_default_location=profile.get("pickup_location"),
             )
         except httpx.HTTPError:
