@@ -9,9 +9,11 @@ const presetButtons: Array<{ preset: QueuePreset; label: string; variant: string
 
 export const QueuePresetControls = ({
   activePreset,
+  disabled,
   onApply,
 }: {
   activePreset: QueuePreset | null
+  disabled?: boolean
   onApply: (preset: QueuePreset) => void
 }) => (
   <div className="quick-actions">
@@ -21,6 +23,7 @@ export const QueuePresetControls = ({
         type="button"
         className={`${variant} ${activePreset === preset ? 'preset-active' : ''}`.trim()}
         aria-pressed={activePreset === preset}
+        disabled={disabled}
         onClick={() => onApply(preset)}
       >
         {label}

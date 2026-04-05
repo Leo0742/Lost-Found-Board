@@ -146,6 +146,7 @@ export const AdminPage = () => {
           <SectionCard title="Quick moderation queues" subtitle={`Role: ${role || 'none'}. Use presets for fast triage.`}>
             <QueuePresetControls
               activePreset={activePreset}
+              disabled={loadingItems}
               onApply={(preset) => {
                 setSelectedIds([])
                 void applyPreset(preset)
@@ -164,12 +165,12 @@ export const AdminPage = () => {
               onSubmit={() => void loadItems(undefined, 0)}
             />
             <div className="actions-row">
-              <button className="button-neutral" onClick={() => {
+              <button type="button" className="button-neutral" disabled={loadingItems || itemsOffset === 0} onClick={() => {
                 const next = Math.max(0, itemsOffset - itemFilters.limit)
                 setItemsOffset(next)
                 void loadItems(undefined, next)
               }}>Prev page</button>
-              <button className="button-neutral" onClick={() => {
+              <button type="button" className="button-neutral" disabled={loadingItems} onClick={() => {
                 const next = itemsOffset + itemFilters.limit
                 setItemsOffset(next)
                 void loadItems(undefined, next)
