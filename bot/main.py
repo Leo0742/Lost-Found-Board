@@ -1,4 +1,5 @@
 import sys
+import logging
 from io import BytesIO
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from config import settings
 
 
 dp = Dispatcher()
+logger = logging.getLogger(__name__)
 api = BackendClient(
     settings.api_base_url,
     timeout_seconds=settings.api_timeout_seconds,
@@ -603,14 +605,17 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
             uploaded = await api.upload_item_image(avatar_bytes, filename=f"telegram_{message.from_user.id}.jpg", mime_type="image/jpeg")
             image_path = uploaded.get("image_path")
             telegram_avatar_url = f"/media/{str(image_path).lstrip('/')}" if image_path else uploaded.get("image_url")
+    except (httpx.HTTPError, TelegramBadRequest):
+        logger.warning("Telegram avatar fetch/upload failed during link flow for user_id=%s", message.from_user.id, exc_info=True)
+    try:
         await api.sync_telegram_profile(
             telegram_user_id=message.from_user.id,
             telegram_username=message.from_user.username,
             telegram_display_name=message.from_user.full_name,
             telegram_avatar_url=telegram_avatar_url,
         )
-    except (httpx.HTTPError, TelegramBadRequest):
-        pass
+    except httpx.HTTPError:
+        logger.warning("Telegram profile sync failed after link confirm for user_id=%s", message.from_user.id, exc_info=True)
     await message.answer(
         "✅ Website linked to your Telegram account.\nProfile on the website will update automatically.",
         reply_markup=MAIN_KEYBOARD,
