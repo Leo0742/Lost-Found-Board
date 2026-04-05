@@ -176,6 +176,27 @@ class InternalClaimCreate(ClaimCreate):
     requester_telegram_user_id: int
 
 
+class LiveLocationShareRequest(BaseModel):
+    latitude: float
+    longitude: float
+    address_text: str | None = Field(default=None, max_length=255)
+    ttl_minutes: int = Field(default=120, ge=5, le=720)
+
+
+class InternalLiveLocationShareRequest(LiveLocationShareRequest):
+    telegram_user_id: int
+
+
+class SharedLiveLocationRead(BaseModel):
+    latitude: float
+    longitude: float
+    address_text: str | None = None
+    shared_at: datetime
+    expires_at: datetime
+    is_active: bool = True
+    route_url: str | None = None
+
+
 class ClaimRead(BaseModel):
     id: int
     source_item_id: int
@@ -193,7 +214,11 @@ class ClaimRead(BaseModel):
     target_item_title: str | None = None
     shared_source_contact: str | None = None
     shared_target_contact: str | None = None
-
+    shared_source_address: str | None = None
+    shared_target_address: str | None = None
+    shared_source_route_url: str | None = None
+    shared_target_route_url: str | None = None
+    shared_live_location: SharedLiveLocationRead | None = None
 
 class ClaimAction(BaseModel):
     note: str | None = Field(default=None, max_length=255)

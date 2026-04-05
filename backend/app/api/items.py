@@ -48,7 +48,9 @@ from app.schemas.item import (
     ItemPublicRead,
     ItemRead,
     ItemVerificationAction,
+    InternalLiveLocationShareRequest,
     InternalMatchResult,
+    LiveLocationShareRequest,
     MatchResult,
     ModerationSignalRead,
     ModerationStatsRead,
@@ -1088,6 +1090,33 @@ def internal_soft_delete_item(
     return service.delete_item(item)
 
 
+
+
+@router.post("/claim-requests/{claim_id}/share-live-location", response_model=ClaimRead)
+def share_live_location(
+    claim_id: int,
+    payload: LiveLocationShareRequest,
+    _: None = Depends(require_csrf_for_session),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> ClaimRead:
+    if not auth_telegram_user_id:
+        raise HTTPException(status_code=401, detail="Connect Telegram first")
+    service = ItemService(db)
+    claim = service.get_claim(claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    updated = service.share_claim_live_location(
+        claim=claim,
+        actor_telegram_user_id=auth_telegram_user_id,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        address_text=payload.address_text,
+        ttl_minutes=payload.ttl_minutes,
+    )
+    return service.claim_read(updated, viewer_telegram_user_id=auth_telegram_user_id)
+
+
 @router.post("/internal/claim-requests", response_model=ClaimRead)
 def create_claim_internal(
     payload: InternalClaimCreate,
@@ -1162,3 +1191,25 @@ def claim_action_internal(
             service.mark_resolved(target)
     updated = service.update_claim_status(claim, status_target, note=payload.note)
     return service.claim_read(updated, viewer_telegram_user_id=actor_id)
+
+
+@router.post("/internal/claim-requests/{claim_id}/share-live-location", response_model=ClaimRead)
+def share_live_location_internal(
+    claim_id: int,
+    payload: InternalLiveLocationShareRequest,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> ClaimRead:
+    service = ItemService(db)
+    claim = service.get_claim(claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    updated = service.share_claim_live_location(
+        claim=claim,
+        actor_telegram_user_id=payload.telegram_user_id,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        address_text=payload.address_text,
+        ttl_minutes=payload.ttl_minutes,
+    )
+    return service.claim_read(updated, viewer_telegram_user_id=payload.telegram_user_id)

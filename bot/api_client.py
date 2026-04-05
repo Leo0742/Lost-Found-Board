@@ -181,6 +181,22 @@ class BackendClient:
             response.raise_for_status()
             return response.json()
 
+
+    async def share_claim_live_location(self, claim_id: int, telegram_user_id: int, latitude: float, longitude: float, address_text: str | None = None, ttl_minutes: int = 120) -> dict:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/items/internal/claim-requests/{claim_id}/share-live-location",
+                json={
+                    "telegram_user_id": telegram_user_id,
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "address_text": address_text,
+                    "ttl_minutes": ttl_minutes,
+                },
+                headers=self._internal_headers,
+            )
+            response.raise_for_status()
+            return response.json()
     async def confirm_web_link(self, code: str, telegram_user_id: int, telegram_username: str | None, display_name: str | None) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(

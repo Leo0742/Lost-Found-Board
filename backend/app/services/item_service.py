@@ -1,4 +1,5 @@
 from datetime import datetime, UTC, timedelta
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +20,8 @@ from app.services.audit import log_event
 from app.services.anti_abuse import AbuseAction, has_recent_duplicate, normalize_reason, record_signal
 from app.services.media import finalize_uploaded_image, is_tmp_path, remove_media_file
 from app.models.user_profile import UserProfile
+from app.services.location_links import yandex_maps_route_url
+from app.services.profile_addresses import exposed_address_summary, primary_exposed_profile_address
 from app.services.profile_contacts import exposed_contact_summary
 
 
@@ -559,11 +562,70 @@ class ItemService:
         self.db.commit()
         return claim
 
+    def share_claim_live_location(
+        self,
+        claim: Claim,
+        actor_telegram_user_id: int,
+        latitude: float,
+        longitude: float,
+        address_text: str | None = None,
+        ttl_minutes: int = 120,
+    ) -> Claim:
+        if actor_telegram_user_id not in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
+            raise HTTPException(status_code=403, detail="Only claim participants can share live location")
+        if claim.status not in {ClaimStatus.APPROVED, ClaimStatus.COMPLETED}:
+            raise HTTPException(status_code=409, detail="Live location can be shared only in approved/completed handoff")
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(minutes=max(5, min(ttl_minutes, 720)))
+        claim.live_location_json = json.dumps({
+            "latitude": latitude,
+            "longitude": longitude,
+            "address_text": (address_text or "").strip()[:255] or None,
+            "shared_by": actor_telegram_user_id,
+        }, ensure_ascii=False)
+        claim.live_location_shared_at = now
+        claim.live_location_expires_at = expires_at
+        self.db.add(claim)
+        self.db.commit()
+        self.db.refresh(claim)
+        return claim
+
+    def _claim_live_location_read(self, claim: Claim):
+        if not claim.live_location_json or not claim.live_location_shared_at or not claim.live_location_expires_at:
+            return None
+        try:
+            payload = json.loads(claim.live_location_json)
+        except json.JSONDecodeError:
+            return None
+        if datetime.now(UTC) > claim.live_location_expires_at:
+            return None
+        from app.schemas.item import SharedLiveLocationRead
+
+        latitude = payload.get("latitude")
+        longitude = payload.get("longitude")
+        if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+            return None
+        address_text = payload.get("address_text") if isinstance(payload.get("address_text"), str) else None
+        return SharedLiveLocationRead(
+            latitude=float(latitude),
+            longitude=float(longitude),
+            address_text=address_text,
+            shared_at=claim.live_location_shared_at,
+            expires_at=claim.live_location_expires_at,
+            is_active=True,
+            route_url=yandex_maps_route_url(float(latitude), float(longitude), address_text),
+        )
+
+
     def claim_read(self, claim: Claim, viewer_telegram_user_id: int | None = None):
         source = self.get_item(claim.source_item_id)
         target = self.get_item(claim.target_item_id)
         shared_source_contact = None
         shared_target_contact = None
+        shared_source_address = None
+        shared_target_address = None
+        shared_source_route_url = None
+        shared_target_route_url = None
         if claim.status in {ClaimStatus.APPROVED, ClaimStatus.COMPLETED} and viewer_telegram_user_id:
             if viewer_telegram_user_id in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
                 if source:
@@ -573,6 +635,10 @@ class ItemService:
                     shared_source_contact = (
                         exposed_contact_summary(source_profile) if source_profile else None
                     ) or source.telegram_username or source.contact_name
+                    shared_source_address = exposed_address_summary(source_profile) if source_profile else None
+                    source_primary_address = primary_exposed_profile_address(source_profile) if source_profile else None
+                    if source_primary_address:
+                        shared_source_route_url = yandex_maps_route_url(source_primary_address.get("latitude"), source_primary_address.get("longitude"), source_primary_address.get("address_text"))
                 if target:
                     target_profile = None
                     if target.owner_telegram_user_id:
@@ -580,7 +646,12 @@ class ItemService:
                     shared_target_contact = (
                         exposed_contact_summary(target_profile) if target_profile else None
                     ) or target.telegram_username or target.contact_name
+                    shared_target_address = exposed_address_summary(target_profile) if target_profile else None
+                    target_primary_address = primary_exposed_profile_address(target_profile) if target_profile else None
+                    if target_primary_address:
+                        shared_target_route_url = yandex_maps_route_url(target_primary_address.get("latitude"), target_primary_address.get("longitude"), target_primary_address.get("address_text"))
         from app.schemas.item import ClaimRead
+        shared_live_location = self._claim_live_location_read(claim) if viewer_telegram_user_id in {claim.requester_telegram_user_id, claim.owner_telegram_user_id} else None
 
         return ClaimRead(
             id=claim.id,
@@ -599,6 +670,11 @@ class ItemService:
             target_item_title=target.title if target else None,
             shared_source_contact=shared_source_contact,
             shared_target_contact=shared_target_contact,
+            shared_source_address=shared_source_address,
+            shared_target_address=shared_target_address,
+            shared_source_route_url=shared_source_route_url,
+            shared_target_route_url=shared_target_route_url,
+            shared_live_location=shared_live_location,
         )
 
     def matches_for_item(self, item: Item, limit: int = 5, include_telegram_user_id: bool = False) -> list[MatchResult]:

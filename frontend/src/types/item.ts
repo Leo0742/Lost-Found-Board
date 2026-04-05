@@ -71,4 +71,17 @@ export interface Claim {
   target_item_title?: string | null
   shared_source_contact?: string | null
   shared_target_contact?: string | null
+  shared_source_address?: string | null
+  shared_target_address?: string | null
+  shared_source_route_url?: string | null
+  shared_target_route_url?: string | null
+  shared_live_location?: {
+    latitude: number
+    longitude: number
+    address_text?: string | null
+    shared_at: string
+    expires_at: string
+    is_active: boolean
+    route_url?: string | null
+  } | null
 }

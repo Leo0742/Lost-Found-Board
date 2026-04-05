@@ -7,6 +7,15 @@ from app.db.session import get_db
 from app.models.auth_session import WebAuthSession
 from app.models.user_profile import UserProfile
 from app.schemas.profile import ProfileRead, ProfileUpdate, TelegramProfileSync
+from app.services.profile_addresses import (
+    ADDRESS_VISIBILITY_ALL,
+    ADDRESS_VISIBILITY_ONE,
+    available_profile_addresses,
+    exposed_address_text,
+    exposed_profile_addresses,
+    make_profile_addresses,
+    serialize_profile_addresses,
+)
 from app.services.profile_contacts import (
     CONTACT_VISIBILITY_ALL,
     CONTACT_VISIBILITY_ONE,
@@ -53,8 +62,27 @@ def _sync_visibility(profile: UserProfile) -> None:
     profile.contact_visibility_method_id = None
 
 
+def _sync_address_visibility(profile: UserProfile) -> None:
+    addresses = available_profile_addresses(profile)
+    address_ids = {row["id"] for row in addresses}
+    visibility = (profile.address_visibility or ADDRESS_VISIBILITY_ALL).strip().lower()
+    if visibility not in {ADDRESS_VISIBILITY_ALL, ADDRESS_VISIBILITY_ONE}:
+        visibility = ADDRESS_VISIBILITY_ALL
+    profile.address_visibility = visibility
+
+    selected = _normalize(profile.address_visibility_address_id)
+    if visibility == ADDRESS_VISIBILITY_ONE and selected in address_ids:
+        profile.address_visibility_address_id = selected
+        return
+
+    profile.address_visibility = ADDRESS_VISIBILITY_ALL
+    profile.address_visibility_address_id = None
+
+
 def _profile_read(profile: UserProfile) -> ProfileRead:
     _sync_visibility(profile)
+    _sync_address_visibility(profile)
+    profile.pickup_location = exposed_address_text(profile) or profile.pickup_location
     return ProfileRead(
         telegram_user_id=profile.telegram_user_id,
         telegram_username=profile.telegram_username,
@@ -69,6 +97,10 @@ def _profile_read(profile: UserProfile) -> ProfileRead:
         exposed_contact_methods=exposed_contact_methods(profile),
         contact_visibility=profile.contact_visibility or CONTACT_VISIBILITY_ALL,
         contact_visibility_method_id=profile.contact_visibility_method_id,
+        profile_addresses=available_profile_addresses(profile),
+        exposed_profile_addresses=exposed_profile_addresses(profile),
+        address_visibility=profile.address_visibility or ADDRESS_VISIBILITY_ALL,
+        address_visibility_address_id=profile.address_visibility_address_id,
         updated_at=profile.updated_at,
     )
 
@@ -89,6 +121,7 @@ def get_my_profile(
         if not profile.display_name:
             profile.display_name = session.telegram_display_name or session.telegram_username
         _sync_visibility(profile)
+        _sync_address_visibility(profile)
         db.add(profile)
         db.commit()
         db.refresh(profile)
@@ -125,7 +158,18 @@ def update_my_profile(
     if payload.contact_visibility_method_id is not None:
         profile.contact_visibility_method_id = _normalize(payload.contact_visibility_method_id)
 
+    if payload.profile_addresses is not None:
+        profile_addresses = make_profile_addresses([row.model_dump() for row in payload.profile_addresses])
+        profile.profile_addresses_json = serialize_profile_addresses(profile_addresses)
+
+    if payload.address_visibility is not None:
+        profile.address_visibility = payload.address_visibility
+    if payload.address_visibility_address_id is not None:
+        profile.address_visibility_address_id = _normalize(payload.address_visibility_address_id)
+
     _sync_visibility(profile)
+    _sync_address_visibility(profile)
+    profile.pickup_location = exposed_address_text(profile) or _normalize(payload.pickup_location)
 
     db.add(profile)
     db.commit()
@@ -137,6 +181,8 @@ def update_my_profile(
 def get_profile_internal(telegram_user_id: int, db: Session = Depends(get_db), _: None = Depends(require_internal_access)) -> ProfileRead:
     profile = _get_or_create_profile(db, telegram_user_id)
     _sync_visibility(profile)
+    _sync_address_visibility(profile)
+    profile.pickup_location = exposed_address_text(profile) or profile.pickup_location
     db.commit()
     db.refresh(profile)
     return _profile_read(profile)
@@ -155,6 +201,8 @@ def sync_telegram_profile_internal(
     if not profile.display_name:
         profile.display_name = profile.telegram_display_name or profile.telegram_username
     _sync_visibility(profile)
+    _sync_address_visibility(profile)
+    profile.pickup_location = exposed_address_text(profile) or profile.pickup_location
     db.add(profile)
     db.commit()
     db.refresh(profile)

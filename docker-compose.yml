@@ -54,6 +54,8 @@ services:
       context: ./frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        YANDEX_MAPS_API_KEY: ${YANDEX_MAPS_API_KEY:-}
+        YANDEX_MAPS_SUGGEST_API_KEY: ${YANDEX_MAPS_SUGGEST_API_KEY:-}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-80}:80"

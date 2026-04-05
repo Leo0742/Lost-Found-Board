@@ -768,3 +768,8 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
     grid-template-columns: 1fr;
   }
 }
+
+.profile-add-address-inline { padding:.75rem; border:1px solid var(--line); border-radius:12px; background:#fff; }
+.profile-address-modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:80; }
+.profile-address-modal { width:min(760px,92vw); background:#fff; border-radius:14px; padding:1rem; box-shadow:0 10px 40px rgba(15,23,42,.2); }
+.profile-map { width:100%; height:340px; border-radius:10px; border:1px solid var(--line); margin:.5rem 0 .75rem; background:#f8fafc; }

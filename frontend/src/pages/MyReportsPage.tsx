@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AxiosError } from 'axios'
-import { claimAction, fetchMyItems, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem } from '../api/items'
+import { claimAction, fetchMyItems, getAuthMe, listClaims, resolveItem, reopenItem, shareClaimLiveLocation, softDeleteItem } from '../api/items'
 import { Claim, Item } from '../types/item'
 import { Link } from 'react-router-dom'
 import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
@@ -47,6 +47,18 @@ export const MyReportsPage = () => {
       if (action === 'delete') await softDeleteItem(itemId)
       await load()
     } catch { setError(t('reports.actionFailed')) }
+  }
+
+  const shareLiveLocationForClaim = async (claimId: number) => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      await shareClaimLiveLocation(claimId, {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        ttl_minutes: 120,
+      })
+      await load()
+    })
   }
 
   const summary = useMemo(() => ({
@@ -119,7 +131,19 @@ export const MyReportsPage = () => {
                 <article key={claim.id} className="card stack">
                   <div className="meta"><strong>Claim #{claim.id}</strong><span className={`badge ${claim.status === 'pending' ? 'pending' : 'approved'}`}>{claim.status}</span></div>
                   <small className="subtle">#{claim.source_item_id} → #{claim.target_item_id}</small>
-                  {claim.status === 'approved' ? <p className="notice">{t('reports.contactsShared')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}</p> : null}
+                  {claim.status === 'approved' ? (
+                    <>
+                      <p className="notice">{t('reports.contactsShared')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}</p>
+                      {(claim.shared_source_address || claim.shared_target_address) ? <p className="subtle">Address: {claim.shared_source_address || '-'} / {claim.shared_target_address || '-'}</p> : null}
+                      <div className="actions-row">
+                        {claim.shared_source_route_url ? <a href={claim.shared_source_route_url} target="_blank" rel="noreferrer"><button type="button" className="button-neutral">Build route (source)</button></a> : null}
+                        {claim.shared_target_route_url ? <a href={claim.shared_target_route_url} target="_blank" rel="noreferrer"><button type="button" className="button-neutral">Build route (target)</button></a> : null}
+                        <button type="button" className="button-neutral" onClick={() => shareLiveLocationForClaim(claim.id)}>Share current location</button>
+                        {claim.shared_live_location?.route_url ? <a href={claim.shared_live_location.route_url} target="_blank" rel="noreferrer"><button type="button">Open live meetup</button></a> : null}
+                      </div>
+                      {claim.shared_live_location ? <p className="subtle">Live location shared until {new Date(claim.shared_live_location.expires_at).toLocaleString()}</p> : null}
+                    </>
+                  ) : null}
                 </article>
               ))}
             </SectionCard>

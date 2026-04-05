@@ -38,6 +38,9 @@ class Claim(Base):
     )
     handoff_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     resolved_by_claim: Mapped[bool] = mapped_column(default=False, nullable=False)
+    live_location_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    live_location_shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    live_location_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
