@@ -256,7 +256,8 @@ async def _fetch_telegram_avatar_bytes(bot: Bot, telegram_user_id: int) -> bytes
     if not tg_file.file_path:
         return None
     destination = BytesIO()
-    await bot.download(tg_file.file_path, destination=destination)
+    await bot.download_file(tg_file.file_path, destination=destination)
+    destination.seek(0)
     payload = destination.getvalue()
     return payload or None
 
