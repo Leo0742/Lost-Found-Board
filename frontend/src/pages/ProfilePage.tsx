@@ -594,22 +594,24 @@ export const ProfilePage = () => {
                 </button>
               </div>
             ) : null}
-            <button
-              type="button"
-              className="button-neutral button-sm"
-              onClick={async () => {
-                setError(null)
-                try {
-                  const nowLinked = await refreshLinkStatus({ clearWaiting: true })
-                  if (!nowLinked) setMessage('Not linked yet. Confirm /link CODE in Telegram and try again.')
-                } catch {
-                  setLinkState('error')
-                  setError('Could not refresh Telegram link status.')
-                }
-              }}
-            >
-              I linked Telegram
-            </button>
+            {linkCommand ? (
+              <button
+                type="button"
+                className="button-neutral button-sm"
+                onClick={async () => {
+                  setError(null)
+                  try {
+                    const nowLinked = await refreshLinkStatus({ clearWaiting: true })
+                    if (!nowLinked) setMessage('Not linked yet. Confirm /link CODE in Telegram and try again.')
+                  } catch {
+                    setLinkState('error')
+                    setError('Could not refresh Telegram link status.')
+                  }
+                }}
+              >
+                Check Telegram link status
+              </button>
+            ) : null}
             {linkState === 'waiting' ? <p className="subtle">Waiting for Telegram confirmation…</p> : null}
           </div>
           <EmptyState title={t('profile.linkToEditTitle')} subtitle={t('profile.linkToEditSub')} action={<Link to="/"><button type="button" className="button-neutral">{t('nav.items')}</button></Link>} />

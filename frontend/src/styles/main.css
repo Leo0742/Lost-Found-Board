@@ -588,13 +588,23 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 }
 
 .settings-trigger {
-  width: 2.3rem;
-  height: 2.3rem;
+  width: 2.75rem;
+  height: 2.75rem;
   display: grid;
   place-items: center;
   border-radius: 999px;
   padding: 0;
-  font-size: 1rem;
+  font-size: 1.2rem;
+  border: 1px solid #c7d5f2;
+  background: linear-gradient(180deg, #f7faff 0%, #e9f0ff 100%);
+  color: #2648d8;
+}
+
+.settings-trigger:hover,
+.settings-trigger:focus-visible {
+  background: linear-gradient(180deg, #eff5ff 0%, #dfe9ff 100%);
+  border-color: #b7caf5;
+  box-shadow: 0 12px 24px rgba(38, 72, 216, 0.2);
 }
 
 .settings-panel {
