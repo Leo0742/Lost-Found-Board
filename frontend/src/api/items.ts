@@ -52,6 +52,7 @@ export type UserProfile = {
   preferred_contact_details?: string | null
   pickup_location?: string | null
   avatar_url?: string | null
+  telegram_avatar_url?: string | null
   updated_at?: string | null
 }
 
@@ -197,8 +198,16 @@ export const generateLinkCode = async () => {
 }
 
 
-export const fetchMyProfile = async () => {
-  const response = await apiClient.get<UserProfile>('/profile/me')
+export const fetchMyProfile = async (options?: { bypassCache?: boolean }) => {
+  const response = await apiClient.get<UserProfile>('/profile/me', options?.bypassCache
+    ? {
+        params: { ts: Date.now() },
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      }
+    : undefined)
   return response.data
 }
 

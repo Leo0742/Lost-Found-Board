@@ -80,7 +80,6 @@ class BackendClient:
             response.raise_for_status()
             return response.json()
 
-
     async def get_profile_internal(self, telegram_user_id: int) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.get(
@@ -89,6 +88,28 @@ class BackendClient:
             )
             response.raise_for_status()
             return response.json()
+
+    async def sync_telegram_profile(
+        self,
+        telegram_user_id: int,
+        telegram_username: str | None,
+        telegram_display_name: str | None,
+        telegram_avatar_url: str | None,
+    ) -> dict:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/profile/internal/sync-telegram",
+                json={
+                    "telegram_user_id": telegram_user_id,
+                    "telegram_username": telegram_username,
+                    "telegram_display_name": telegram_display_name,
+                    "telegram_avatar_url": telegram_avatar_url,
+                },
+                headers=self._internal_headers,
+            )
+            response.raise_for_status()
+            return response.json()
+
     async def resolve_item(self, item_id: int, telegram_user_id: int) -> dict:
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(

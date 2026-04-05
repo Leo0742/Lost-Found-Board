@@ -12,6 +12,7 @@ class ProfileRead(BaseModel):
     preferred_contact_details: str | None = None
     pickup_location: str | None = None
     avatar_url: str | None = None
+    telegram_avatar_url: str | None = None
     updated_at: datetime | None = None
 
 
@@ -21,3 +22,10 @@ class ProfileUpdate(BaseModel):
     preferred_contact_details: str | None = Field(default=None, max_length=255)
     pickup_location: str | None = Field(default=None, max_length=160)
     avatar_url: str | None = Field(default=None, max_length=500)
+
+
+class TelegramProfileSync(BaseModel):
+    telegram_user_id: int
+    telegram_username: str | None = Field(default=None, max_length=80)
+    telegram_display_name: str | None = Field(default=None, max_length=120)
+    telegram_avatar_url: str | None = Field(default=None, max_length=500)

@@ -19,6 +19,7 @@ class UserProfile(Base):
     preferred_contact_details: Mapped[str | None] = mapped_column(String(255), nullable=True)
     pickup_location: Mapped[str | None] = mapped_column(String(160), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    telegram_avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -628,3 +628,11 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
   font-weight: 700;
   color: var(--primary-strong);
 }
+
+.profile-link-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  flex-wrap: wrap;
+}

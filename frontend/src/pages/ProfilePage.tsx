@@ -20,6 +20,7 @@ export const ProfilePage = () => {
   const [role, setRole] = useState<'admin' | 'moderator' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const [displayName, setDisplayName] = useState('')
   const [preferredContactMethod, setPreferredContactMethod] = useState('telegram')
@@ -37,7 +38,7 @@ export const ProfilePage = () => {
         setProfile(null)
         return
       }
-      const meProfile = await fetchMyProfile()
+      const meProfile = await fetchMyProfile({ bypassCache: true })
       setProfile(meProfile)
       setDisplayName(meProfile.display_name ?? '')
       setPreferredContactMethod(meProfile.preferred_contact_method ?? 'telegram')
@@ -51,6 +52,38 @@ export const ProfilePage = () => {
   }
 
   useEffect(() => { void load() }, [])
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1800)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  useEffect(() => {
+    if (!linkCode || linked) return
+    const interval = window.setInterval(() => {
+      void (async () => {
+        try {
+          const me = await getAuthMe({ forceRefresh: true })
+          if (!me.linked) return
+          const meProfile = await fetchMyProfile({ bypassCache: true })
+          setLinked(true)
+          setRole(me.role ?? null)
+          setProfile(meProfile)
+          setDisplayName(meProfile.display_name ?? '')
+          setPreferredContactMethod(meProfile.preferred_contact_method ?? 'telegram')
+          setPreferredContactDetails(meProfile.preferred_contact_details ?? '')
+          setPickupLocation(meProfile.pickup_location ?? '')
+          setLinkCode(null)
+          setCopied(false)
+          setMessage(t('profile.linkDetected'))
+        } catch {
+          // keep polling until linked or code cleared
+        }
+      })()
+    }, 3000)
+    return () => window.clearInterval(interval)
+  }, [linkCode, linked, t])
 
   const onSave = async (event: FormEvent) => {
     event.preventDefault()
@@ -74,6 +107,7 @@ export const ProfilePage = () => {
     () => initialsFrom(displayName || profile?.telegram_display_name || profile?.telegram_username || undefined),
     [displayName, profile?.telegram_display_name, profile?.telegram_username],
   )
+  const shownAvatarUrl = profile?.telegram_avatar_url || profile?.avatar_url
 
   return (
     <section className="stack">
@@ -96,8 +130,8 @@ export const ProfilePage = () => {
         <div className="layout-split">
           <SectionCard title={t('profile.identity')} subtitle={t('profile.identitySub')}>
             <div className="profile-identity">
-              {profile?.avatar_url ? (
-                <img className="profile-avatar" src={profile.avatar_url} alt={displayName || 'avatar'} />
+              {shownAvatarUrl ? (
+                <img className="profile-avatar" src={shownAvatarUrl ?? ''} alt={displayName || 'avatar'} />
               ) : (
                 <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">{avatarFallback}</div>
               )}
@@ -113,8 +147,32 @@ export const ProfilePage = () => {
             {!linked ? (
               <div className="stack">
                 <p className="subtle">{t('profile.telegramUnlinked')}</p>
-                <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('profile.generateCode')}</button>
-                {linkCode ? <p className="notice">{t('profile.sendCode')} <strong>/link {linkCode}</strong></p> : null}
+                <button type="button" onClick={async () => {
+                  const generated = await generateLinkCode()
+                  setLinkCode(generated.code)
+                  setCopied(false)
+                  setMessage(null)
+                }}>{t('profile.generateCode')}</button>
+                {linkCode ? (
+                  <div className="notice profile-link-code">
+                    <span>{t('profile.sendCode')} <strong>/link {linkCode}</strong></span>
+                    <button
+                      type="button"
+                      className="button-neutral"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(`/link ${linkCode}`)
+                          setError(null)
+                          setCopied(true)
+                        } catch {
+                          setError(t('profile.copyFailed'))
+                        }
+                      }}
+                    >
+                      {copied ? t('profile.copied') : t('profile.copyCommand')}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="stack">

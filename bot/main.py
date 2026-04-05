@@ -1,4 +1,5 @@
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import httpx
@@ -242,6 +243,20 @@ async def _send_with_backend_photo_or_text(
         await bot.send_photo(chat_id, photo=image_file, caption=text, reply_markup=reply_markup)
     except (httpx.HTTPError, TelegramBadRequest):
         await bot.send_message(chat_id, text, reply_markup=reply_markup)
+
+
+async def _fetch_telegram_avatar_bytes(bot: Bot, telegram_user_id: int) -> bytes | None:
+    photos = await bot.get_user_profile_photos(user_id=telegram_user_id, limit=1)
+    if not photos.total_count or not photos.photos:
+        return None
+    biggest: PhotoSize = photos.photos[0][-1]
+    tg_file = await bot.get_file(biggest.file_id)
+    if not tg_file.file_path:
+        return None
+    destination = BytesIO()
+    await bot.download(tg_file.file_path, destination=destination)
+    payload = destination.getvalue()
+    return payload or None
 
 
 async def _clear_state(state: FSMContext) -> None:
@@ -581,8 +596,22 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
     except httpx.HTTPError:
         await message.answer("Could not link this code. It may be expired. Generate a new code on the website.", reply_markup=MAIN_KEYBOARD)
         return
+    telegram_avatar_url: str | None = None
+    try:
+        avatar_bytes = await _fetch_telegram_avatar_bytes(message.bot, message.from_user.id)
+        if avatar_bytes:
+            uploaded = await api.upload_item_image(avatar_bytes, filename=f"telegram_{message.from_user.id}.jpg", mime_type="image/jpeg")
+            telegram_avatar_url = uploaded.get("image_url") or uploaded.get("image_path")
+        await api.sync_telegram_profile(
+            telegram_user_id=message.from_user.id,
+            telegram_username=message.from_user.username,
+            telegram_display_name=message.from_user.full_name,
+            telegram_avatar_url=telegram_avatar_url,
+        )
+    except (httpx.HTTPError, TelegramBadRequest):
+        pass
     await message.answer(
-        "✅ Website linked to your Telegram account.\nReload Profile/My Reports on the website to see synced ownership and claims.",
+        "✅ Website linked to your Telegram account.\nProfile on the website will update automatically.",
         reply_markup=MAIN_KEYBOARD,
     )
 
