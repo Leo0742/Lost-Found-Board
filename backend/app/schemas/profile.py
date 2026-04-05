@@ -15,6 +15,24 @@ class ContactMethodUpdate(BaseModel):
     value: str = Field(min_length=1, max_length=255)
 
 
+class ProfileAddressRead(BaseModel):
+    id: str
+    label: str
+    address_text: str
+    latitude: float | None = None
+    longitude: float | None = None
+    extra_details: str | None = None
+
+
+class ProfileAddressUpdate(BaseModel):
+    id: str | None = Field(default=None, max_length=64)
+    label: str = Field(min_length=1, max_length=40)
+    address_text: str = Field(min_length=2, max_length=255)
+    latitude: float | None = None
+    longitude: float | None = None
+    extra_details: str | None = Field(default=None, max_length=500)
+
+
 class ProfileRead(BaseModel):
     telegram_user_id: int
     telegram_username: str | None = None
@@ -29,6 +47,10 @@ class ProfileRead(BaseModel):
     exposed_contact_methods: list[ContactMethodRead] = Field(default_factory=list)
     contact_visibility: str = "all"
     contact_visibility_method_id: str | None = None
+    profile_addresses: list[ProfileAddressRead] = Field(default_factory=list)
+    exposed_profile_addresses: list[ProfileAddressRead] = Field(default_factory=list)
+    address_visibility: str = "all"
+    address_visibility_address_id: str | None = None
     updated_at: datetime | None = None
 
 
@@ -41,6 +63,9 @@ class ProfileUpdate(BaseModel):
     contact_methods: list[ContactMethodUpdate] | None = None
     contact_visibility: str | None = Field(default=None, pattern="^(all|one)$")
     contact_visibility_method_id: str | None = Field(default=None, max_length=64)
+    profile_addresses: list[ProfileAddressUpdate] | None = None
+    address_visibility: str | None = Field(default=None, pattern="^(all|one)$")
+    address_visibility_address_id: str | None = Field(default=None, max_length=64)
 
 
 class TelegramProfileSync(BaseModel):

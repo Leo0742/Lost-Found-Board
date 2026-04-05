@@ -193,6 +193,8 @@ class ClaimRead(BaseModel):
     target_item_title: str | None = None
     shared_source_contact: str | None = None
     shared_target_contact: str | None = None
+    shared_source_address: str | None = None
+    shared_target_address: str | None = None
 
 
 class ClaimAction(BaseModel):

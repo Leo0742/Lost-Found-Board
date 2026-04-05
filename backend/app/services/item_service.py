@@ -19,6 +19,7 @@ from app.services.audit import log_event
 from app.services.anti_abuse import AbuseAction, has_recent_duplicate, normalize_reason, record_signal
 from app.services.media import finalize_uploaded_image, is_tmp_path, remove_media_file
 from app.models.user_profile import UserProfile
+from app.services.profile_addresses import exposed_address_summary
 from app.services.profile_contacts import exposed_contact_summary
 
 
@@ -564,6 +565,8 @@ class ItemService:
         target = self.get_item(claim.target_item_id)
         shared_source_contact = None
         shared_target_contact = None
+        shared_source_address = None
+        shared_target_address = None
         if claim.status in {ClaimStatus.APPROVED, ClaimStatus.COMPLETED} and viewer_telegram_user_id:
             if viewer_telegram_user_id in {claim.requester_telegram_user_id, claim.owner_telegram_user_id}:
                 if source:
@@ -573,6 +576,7 @@ class ItemService:
                     shared_source_contact = (
                         exposed_contact_summary(source_profile) if source_profile else None
                     ) or source.telegram_username or source.contact_name
+                    shared_source_address = exposed_address_summary(source_profile) if source_profile else None
                 if target:
                     target_profile = None
                     if target.owner_telegram_user_id:
@@ -580,6 +584,7 @@ class ItemService:
                     shared_target_contact = (
                         exposed_contact_summary(target_profile) if target_profile else None
                     ) or target.telegram_username or target.contact_name
+                    shared_target_address = exposed_address_summary(target_profile) if target_profile else None
         from app.schemas.item import ClaimRead
 
         return ClaimRead(
@@ -599,6 +604,8 @@ class ItemService:
             target_item_title=target.title if target else None,
             shared_source_contact=shared_source_contact,
             shared_target_contact=shared_target_contact,
+            shared_source_address=shared_source_address,
+            shared_target_address=shared_target_address,
         )
 
     def matches_for_item(self, item: Item, limit: int = 5, include_telegram_user_id: bool = False) -> list[MatchResult]:

@@ -119,7 +119,9 @@ export const MyReportsPage = () => {
                 <article key={claim.id} className="card stack">
                   <div className="meta"><strong>Claim #{claim.id}</strong><span className={`badge ${claim.status === 'pending' ? 'pending' : 'approved'}`}>{claim.status}</span></div>
                   <small className="subtle">#{claim.source_item_id} → #{claim.target_item_id}</small>
-                  {claim.status === 'approved' ? <p className="notice">{t('reports.contactsShared')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}</p> : null}
+                  {claim.status === 'approved' ? <p className="notice">{t('reports.contactsShared')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}
+                    {claim.shared_source_address || claim.shared_target_address ? ` • Address: ${claim.shared_source_address || '-'} / ${claim.shared_target_address || '-'}` : ''}
+                  </p> : null}
                 </article>
               ))}
             </SectionCard>

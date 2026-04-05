@@ -71,4 +71,6 @@ export interface Claim {
   target_item_title?: string | null
   shared_source_contact?: string | null
   shared_target_contact?: string | null
+  shared_source_address?: string | null
+  shared_target_address?: string | null
 }

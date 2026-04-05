@@ -31,6 +31,7 @@ export const NewItemPage = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [categories, setCategories] = useState<string[]>(['Other'])
+  const [profileAddresses, setProfileAddresses] = useState<Array<{ id: string; label: string; address_text: string }>>([])
   const [categoryHint, setCategoryHint] = useState<{ category: string; confidence: number } | null>(null)
   const navigate = useNavigate()
 
@@ -48,6 +49,7 @@ export const NewItemPage = () => {
       if (!location && profile.pickup_location) {
         setLocation(profile.pickup_location)
       }
+      setProfileAddresses((profile.profile_addresses ?? []).map((row) => ({ id: row.id, label: row.label, address_text: row.address_text })))
       if (!telegramUsername && profile.telegram_username) {
         setTelegramUsername(`@${String(profile.telegram_username).replace(/^@/, '')}`)
       }
@@ -149,6 +151,14 @@ export const NewItemPage = () => {
               </p>
             ) : null}
             <label>{t('board.filter.location')}<input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
+            {profileAddresses.length > 0 ? (
+              <label>Use saved profile address
+                <select value="" onChange={(e) => { if (e.target.value) setLocation(e.target.value) }}>
+                  <option value="">Select saved address</option>
+                  {profileAddresses.map((address) => <option key={address.id} value={address.address_text}>{address.label}: {address.address_text}</option>)}
+                </select>
+              </label>
+            ) : null}
             <label>{t('new.description')}<textarea required minLength={5} maxLength={2000} rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
             <label>{t('new.contactName')}<input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} /></label>
             <label>{t('new.telegramOptional')}<input maxLength={80} value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" /></label>

@@ -117,7 +117,7 @@ STEP_META = {
     "location": {
         "state": NewItemForm.location,
         "title": "Location",
-        "prompt": "Where was it lost/found? (type 'profile' to use saved pickup location)",
+        "prompt": "Where was it lost/found? (type 'profile' for saved address or 'profile:Label')",
     },
     "description": {
         "state": NewItemForm.description,
@@ -344,6 +344,10 @@ async def _ask_step(message: Message, state: FSMContext, step_key: str) -> None:
         data = await state.get_data()
         if step_key == "location" and data.get("profile_default_location"):
             prompt += f"\nSaved profile location: {data.get('profile_default_location')}"
+            saved = data.get('profile_saved_addresses') or []
+            labels = [str(row.get('label') or '').strip() for row in saved if str(row.get('label') or '').strip()]
+            if labels:
+                prompt += f"\nSaved labels: {', '.join(labels[:6])}"
         if step_key == "contact" and data.get("profile_default_contact"):
             prompt += f"\nSaved profile contact: {data.get('profile_default_contact')}"
     if step_key == "category":
@@ -653,9 +657,17 @@ async def cmd_new(message: Message, state: FSMContext) -> None:
             if exposed:
                 first = exposed[0]
                 default_contact = f"{first.get('name')}: {first.get('value')}"
+            exposed_addresses = profile.get("exposed_profile_addresses") or []
+            all_addresses = profile.get("profile_addresses") or []
+            default_address = None
+            if exposed_addresses:
+                default_address = exposed_addresses[0].get("address_text")
+            elif all_addresses:
+                default_address = all_addresses[0].get("address_text")
             await state.update_data(
                 profile_default_contact=default_contact or profile.get("preferred_contact_details") or profile.get("display_name"),
-                profile_default_location=profile.get("pickup_location"),
+                profile_default_location=default_address or profile.get("pickup_location"),
+                profile_saved_addresses=all_addresses,
             )
         except httpx.HTTPError:
             pass
@@ -799,7 +811,15 @@ async def form_category(message: Message, state: FSMContext) -> None:
 async def form_location(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     location_raw = message.text.strip()
-    location = str(data.get('profile_default_location', '')).strip() if location_raw.lower() == 'profile' else location_raw
+    location = location_raw
+    if location_raw.lower() == 'profile':
+        location = str(data.get('profile_default_location', '')).strip()
+    elif location_raw.lower().startswith('profile:'):
+        label = location_raw.split(':', maxsplit=1)[1].strip().lower()
+        saved = data.get('profile_saved_addresses') or []
+        matched = next((row for row in saved if str(row.get('label', '')).strip().lower() == label), None)
+        if matched:
+            location = str(matched.get('address_text') or '').strip()
     if not await _check_length(message, "location", location):
         return
     await _store_and_continue(message, state, "location", location)

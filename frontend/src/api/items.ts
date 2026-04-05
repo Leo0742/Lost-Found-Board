@@ -49,6 +49,15 @@ export type ProfileContactMethod = {
   value: string
 }
 
+export type ProfileAddress = {
+  id: string
+  label: string
+  address_text: string
+  latitude?: number | null
+  longitude?: number | null
+  extra_details?: string | null
+}
+
 export type UserProfile = {
   telegram_user_id: number
   telegram_username?: string | null
@@ -63,6 +72,10 @@ export type UserProfile = {
   exposed_contact_methods?: ProfileContactMethod[]
   contact_visibility?: "all" | "one"
   contact_visibility_method_id?: string | null
+  profile_addresses?: ProfileAddress[]
+  exposed_profile_addresses?: ProfileAddress[]
+  address_visibility?: "all" | "one"
+  address_visibility_address_id?: string | null
   updated_at?: string | null
 }
 
@@ -75,6 +88,9 @@ export type UserProfileUpdate = {
   contact_methods?: ProfileContactMethod[] | null
   contact_visibility?: "all" | "one"
   contact_visibility_method_id?: string | null
+  profile_addresses?: ProfileAddress[] | null
+  address_visibility?: "all" | "one"
+  address_visibility_address_id?: string | null
 }
 
 export type AdminItemsParams = {

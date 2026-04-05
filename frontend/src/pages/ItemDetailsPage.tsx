@@ -93,7 +93,9 @@ export const ItemDetailsPage = () => {
                     <button className="button-neutral" type="button" onClick={async () => { await claimAction(claim.id, 'reject'); setClaims(await listClaims('all') as Claim[]) }}>{t('item.reject')}</button>
                   </div>
                 ) : null}
-                {claim.status === 'approved' ? <p className="notice">{t('item.sharedContacts')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}</p> : null}
+                {claim.status === 'approved' ? <p className="notice">{t('item.sharedContacts')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}
+                  {claim.shared_source_address || claim.shared_target_address ? ` • Address: ${claim.shared_source_address || '-'} / ${claim.shared_target_address || '-'}` : ''}
+                </p> : null}
               </article>
             ))}
           </SectionCard>
