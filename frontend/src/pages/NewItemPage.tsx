@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { createItem, uploadItemImage, getAuthMe, generateLinkCode, fetchCategories, suggestCategory } from '../api/items'
@@ -29,19 +29,42 @@ export const NewItemPage = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
+  const [isCheckingLink, setIsCheckingLink] = useState(false)
   const [categories, setCategories] = useState<string[]>(['Other'])
   const [categoryHint, setCategoryHint] = useState<{ category: string; confidence: number } | null>(null)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    getAuthMe().then((me) => {
+  const refreshAuthState = useCallback(async (options?: { silent?: boolean; forceRefresh?: boolean }) => {
+    if (!options?.silent) setIsCheckingLink(true)
+    try {
+      const me = await getAuthMe({ forceRefresh: options?.forceRefresh ?? false })
       setLinkedUserId(me.identity?.telegram_user_id ?? null)
-      if (me.identity?.telegram_username) setTelegramUsername(`@${me.identity.telegram_username}`)
-    }).catch(() => setError('Could not initialize auth session.'))
+      if (me.identity?.telegram_username) {
+        setTelegramUsername(`@${me.identity.telegram_username}`)
+      }
+      if (me.identity?.telegram_user_id) {
+        setLinkCode(null)
+      }
+      return me
+    } finally {
+      if (!options?.silent) setIsCheckingLink(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshAuthState().catch(() => setError('Could not initialize auth session.'))
     fetchCategories().then((data) => {
       if (data.length > 0) setCategories(data)
     }).catch(() => setCategories(['Other']))
-  }, [])
+  }, [refreshAuthState])
+
+  useEffect(() => {
+    if (!linkCode || linkedUserId) return
+    const interval = window.setInterval(() => {
+      refreshAuthState({ silent: true, forceRefresh: true }).catch(() => undefined)
+    }, 2500)
+    return () => window.clearInterval(interval)
+  }, [linkCode, linkedUserId, refreshAuthState])
 
   useEffect(() => {
     const normalized = title.trim()
@@ -148,6 +171,18 @@ export const NewItemPage = () => {
             <SectionCard title="Link Telegram" subtitle="Required for secure ownership and synced bot actions.">
               <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>Generate secure link code</button>
               {linkCode ? <p className="notice">Send this in Telegram: <strong>/link {linkCode}</strong></p> : null}
+              {linkCode ? (
+                <div className="actions-row">
+                  <button
+                    type="button"
+                    className="button-neutral"
+                    disabled={isCheckingLink}
+                    onClick={() => refreshAuthState({ forceRefresh: true }).catch(() => setError('Could not refresh link status.'))}
+                  >
+                    {isCheckingLink ? 'Checking…' : 'I linked my Telegram'}
+                  </button>
+                </div>
+              ) : null}
             </SectionCard>
           ) : <EmptyState title="Telegram linked" subtitle="You can submit and manage this report across web and bot." />}
         </div>

@@ -70,6 +70,26 @@ def rotate_web_session(
     return replacement
 
 
+def link_telegram_to_existing_session(
+    db: Session,
+    session: WebAuthSession,
+    *,
+    telegram_user_id: int,
+    telegram_username: str | None,
+    telegram_display_name: str | None,
+) -> WebAuthSession:
+    session.telegram_user_id = telegram_user_id
+    session.telegram_username = telegram_username
+    session.telegram_display_name = telegram_display_name
+    session.linked_at = _now()
+    session.link_code = None
+    session.link_code_expires_at = None
+    db.add(session)
+    db.flush()
+    db.refresh(session)
+    return session
+
+
 def ensure_session_csrf_token(db: Session, session: WebAuthSession) -> str:
     if session.csrf_token:
         return session.csrf_token

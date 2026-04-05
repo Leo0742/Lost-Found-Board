@@ -160,7 +160,10 @@ export const createWebSession = async () => {
   return response.data
 }
 
-export const getAuthMe = async () => {
+export const getAuthMe = async (options?: { forceRefresh?: boolean }) => {
+  if (options?.forceRefresh) {
+    invalidateCache('auth:me')
+  }
   return cachedCall('auth:me', 15_000, async () => {
     const response = await apiClient.get<WhoAmI>('/auth/me')
     return response.data

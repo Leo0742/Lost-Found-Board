@@ -106,3 +106,39 @@ def test_non_dev_readiness_fails_with_default_internal_token(client, db_session_
     assert report.ready is False
 
     get_settings.cache_clear()
+
+
+def test_link_confirm_updates_existing_session_without_rotation(client, db_session_factory):
+    with db_session_factory() as db:
+        session = WebAuthSession(
+            id=generate_session_id(),
+            csrf_token=generate_csrf_token(),
+            link_code="ABC123",
+            link_code_expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            expires_at=datetime.now(UTC) + timedelta(days=7),
+        )
+        db.add(session)
+        db.commit()
+        original_id = session.id
+
+    response = client.post(
+        "/api/auth/link/confirm",
+        json={
+            "code": "ABC123",
+            "telegram_user_id": 555001,
+            "telegram_username": "linked_user",
+            "display_name": "Linked User",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("set-cookie") is None
+
+    with db_session_factory() as db:
+        updated = db.get(WebAuthSession, original_id)
+        assert updated is not None
+        assert updated.telegram_user_id == 555001
+        assert updated.telegram_username == "linked_user"
+        assert updated.telegram_display_name == "Linked User"
+        assert updated.linked_at is not None
+        assert updated.link_code is None
+        assert updated.link_code_expires_at is None
