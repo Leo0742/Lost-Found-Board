@@ -35,7 +35,7 @@ a { color: inherit; }
 }
 
 .container {
-  width: min(1160px, 92vw);
+  width: min(1600px, 96vw);
   margin: 0 auto;
 }
 
@@ -52,27 +52,30 @@ a { color: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.95rem 0;
+  gap: 1.35rem;
+  padding: 0.9rem 0;
 }
 
 .brand {
   text-decoration: none;
   font-weight: 800;
-  letter-spacing: -0.02em;
-  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+  font-size: clamp(1.25rem, 1.8vw, 1.6rem);
+  line-height: 1;
 }
 
 .top-nav {
   display: flex;
-  gap: 0.45rem;
+  gap: 0.55rem;
   flex-wrap: wrap;
+  margin-left: auto;
+  margin-right: .4rem;
 }
 
 .top-nav a {
   text-decoration: none;
   color: var(--text-muted);
-  padding: 0.5rem 0.85rem;
+  padding: 0.55rem 0.95rem;
   border-radius: 999px;
   transition: all .2s ease;
 }
@@ -98,7 +101,7 @@ a { color: inherit; }
 .role-chip.admin span { color: #2648d8; }
 .role-chip.moderator span { color: #07744f; }
 
-.content { padding: 1.4rem 0 3rem; }
+.content { padding: 1.1rem 0 3.25rem; }
 
 .hero {
   background: linear-gradient(145deg, #202a4f 0%, #2e437f 48%, #355cff 100%);
@@ -415,7 +418,7 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 
 .board-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -460,6 +463,10 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .skeleton.skeleton-card {
   height: 305px;
   border: 1px solid var(--border);
+}
+
+@media (max-width: 1500px) {
+  .board-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1200px) {

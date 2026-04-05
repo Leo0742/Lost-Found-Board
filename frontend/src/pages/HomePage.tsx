@@ -1,9 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { fetchCategories, fetchItems } from '../api/items'
 import { Item, ItemStatus } from '../types/item'
-import { ItemCard } from '../components/ItemCard'
-import { EmptyState, LoadingGrid, PageHero } from '../components/ui'
+import { EmptyState, LoadingGrid } from '../components/ui'
 import { ActiveFilterChips, BoardFilters, BoardGrid, BoardToolbar } from '../components/board'
 
 type SortOption = 'newest' | 'oldest' | 'title'
@@ -88,13 +86,6 @@ export const HomePage = () => {
     return next
   }, [items, location, onlyWithPhoto, onlyVerified, sort])
 
-  const stats = useMemo(() => ({
-    total: visibleItems.length,
-    lost: visibleItems.filter((item) => item.status === 'lost').length,
-    found: visibleItems.filter((item) => item.status === 'found').length,
-    verified: visibleItems.filter((item) => item.is_verified).length,
-  }), [visibleItems])
-
   const activeFilters = useMemo(() => {
     const chips: Array<{ key: string; label: string; onClear: () => void }> = []
 
@@ -133,24 +124,6 @@ export const HomePage = () => {
 
   return (
     <section className="stack board-page">
-      <PageHero
-        compact
-        title="Lost & Found Workspace"
-        subtitle="Browse active reports, filter quickly, and open details in one streamlined board feed."
-        actions={
-          <>
-            <Link to="/new"><button type="button">Report an item</button></Link>
-            <Link to="/my-reports"><button className="button-neutral" type="button">My reports</button></Link>
-          </>
-        }
-        stats={[
-          { label: 'Visible', value: stats.total },
-          { label: 'Lost', value: stats.lost },
-          { label: 'Found', value: stats.found },
-          { label: 'Verified', value: stats.verified },
-        ]}
-      />
-
       <form className="board-panel stack" onSubmit={onSearch}>
         <BoardToolbar
           q={q}
@@ -186,11 +159,9 @@ export const HomePage = () => {
       {loading ? <LoadingGrid count={8} card /> : null}
       {!loading && !error && visibleItems.length === 0 ? (
         <EmptyState
-          title={activeFilters.length > 0 ? 'No matching reports' : 'No reports on the board yet'}
-          subtitle={activeFilters.length > 0 ? 'Try adjusting filters or clearing them to explore more reports.' : 'Start the board by posting the first lost or found item report.'}
-          action={activeFilters.length > 0
-            ? <button type="button" className="button-neutral" onClick={clearAllFilters}>Clear filters</button>
-            : <Link to="/new"><button type="button">Create report</button></Link>}
+          title={activeFilters.length > 0 ? 'No matching reports' : 'No reports yet'}
+          subtitle={activeFilters.length > 0 ? 'Try adjusting filters or clearing them to explore more reports.' : 'Reports will appear here once community members publish lost or found items.'}
+          action={activeFilters.length > 0 ? <button type="button" className="button-neutral" onClick={clearAllFilters}>Clear filters</button> : undefined}
         />
       ) : null}
 
