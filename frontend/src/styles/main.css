@@ -307,6 +307,7 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .hero-grid { display: grid; grid-template-columns: 1.4fr .9fr; gap: 1rem; align-items: end; }
 .hero-stats-grid { display: grid; grid-template-columns: repeat(2,minmax(120px,1fr)); }
 .layout-split { display: grid; grid-template-columns: 1.45fr .95fr; gap: 1rem; align-items: start; }
+.new-item-main { width: min(1200px, 100%); margin: 0 auto; }
 .layout-three { display: grid; grid-template-columns: 1.1fr 1.1fr .9fr; gap: 1rem; align-items: start; }
 .sticky-side { position: sticky; top: 86px; }
 .quick-actions { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: .75rem; }
