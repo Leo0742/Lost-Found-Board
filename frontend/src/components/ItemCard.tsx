@@ -1,34 +1,46 @@
 import { Link } from 'react-router-dom'
 import { Item } from '../types/item'
 
-const formatDate = (value: string) => new Date(value).toLocaleDateString()
+const formatRelativeTime = (value: string) => {
+  const timestamp = new Date(value).getTime()
+  const diffHours = Math.round((Date.now() - timestamp) / (1000 * 60 * 60))
+
+  if (diffHours < 1) return 'Just now'
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.round(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return new Date(value).toLocaleDateString()
+}
 
 export const ItemCard = ({ item }: { item: Item }) => {
   const imageUrl = item.image_path ? `/media/${item.image_path}` : null
 
   return (
-    <article className="card stack">
-      {imageUrl ? <img className="thumb" src={imageUrl} alt={item.title} /> : <div className="thumb" aria-hidden="true" />}
+    <article className="board-card stack">
+      {imageUrl ? <img className="thumb" src={imageUrl} alt={item.title} loading="lazy" /> : <div className="thumb thumb-placeholder" aria-hidden="true">No photo</div>}
       <div className="card-head">
-        <h3>
-          <Link to={`/items/${item.id}`}>{item.title}</Link>
-        </h3>
-        <span className={`badge ${item.status}`}>{item.status}</span>
+        <div className="stack" style={{ gap: '.4rem' }}>
+          <div className="status-row">
+            <span className={`badge ${item.status}`}>{item.status}</span>
+            {item.is_verified ? <span className="badge approved">verified</span> : null}
+            <span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>
+          </div>
+          <h3>
+            <Link to={`/items/${item.id}`}>{item.title}</Link>
+          </h3>
+        </div>
       </div>
-      <div className="meta">
-        <span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span>
-        <span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>
-      </div>
-      <p className="subtle">{item.description.slice(0, 130)}{item.description.length > 130 ? '…' : ''}</p>
+      <p className="subtle clamp-2">{item.description.slice(0, 160)}{item.description.length > 160 ? '…' : ''}</p>
       <div className="meta">
         <span>{item.category}</span>
         <span>{item.location}</span>
       </div>
       <div className="meta">
         <span>#{item.id}</span>
-        <span>{formatDate(item.created_at)}</span>
+        <span>{formatRelativeTime(item.created_at)}</span>
       </div>
-      <Link to={`/items/${item.id}`}><button type="button" className="button-neutral">Open workspace</button></Link>
+      <Link to={`/items/${item.id}`}><button type="button" className="button-neutral card-cta">Open details</button></Link>
     </article>
   )
 }
