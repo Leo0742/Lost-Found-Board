@@ -1,16 +1,23 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { fetchItems } from '../api/items'
+import { fetchCategories, fetchItems } from '../api/items'
 import { Item, ItemStatus } from '../types/item'
-import { ItemCard } from '../components/ItemCard'
-import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
+import { EmptyState, LoadingGrid } from '../components/ui'
+import { ActiveFilterChips, BoardFilters, BoardGrid, BoardToolbar } from '../components/board'
+
+type SortOption = 'newest' | 'oldest' | 'title'
 
 export const HomePage = () => {
   const [items, setItems] = useState<Item[]>([])
+  const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<ItemStatus | 'all'>('all')
   const [category, setCategory] = useState('')
+  const [location, setLocation] = useState('')
+  const [onlyWithPhoto, setOnlyWithPhoto] = useState(false)
+  const [onlyVerified, setOnlyVerified] = useState(false)
+  const [sort, setSort] = useState<SortOption>('newest')
+  const [showFilters, setShowFilters] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
@@ -32,78 +39,133 @@ export const HomePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setCategories(await fetchCategories())
+      } catch (err) {
+        console.error('Failed to load categories', err)
+      }
+    }
+    loadCategories()
+  }, [])
+
   const onSearch = async (event: FormEvent) => {
     event.preventDefault()
     await load()
   }
 
-  const stats = useMemo(() => ({
-    total: items.length,
-    lost: items.filter((item) => item.status === 'lost').length,
-    found: items.filter((item) => item.status === 'found').length,
-    active: items.filter((item) => item.lifecycle === 'active').length,
-  }), [items])
+  const locationOptions = useMemo(() => Array.from(new Set(items.map((item) => item.location).filter(Boolean))).sort(), [items])
 
-  const latest = items.slice(0, 3)
+  const visibleItems = useMemo(() => {
+    let next = [...items]
+
+    if (location) {
+      const query = location.toLowerCase()
+      next = next.filter((item) => item.location.toLowerCase().includes(query))
+    }
+
+    if (onlyWithPhoto) {
+      next = next.filter((item) => Boolean(item.image_path))
+    }
+
+    if (onlyVerified) {
+      next = next.filter((item) => item.is_verified)
+    }
+
+    next.sort((a, b) => {
+      if (sort === 'oldest') {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      }
+      if (sort === 'title') {
+        return a.title.localeCompare(b.title)
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    return next
+  }, [items, location, onlyWithPhoto, onlyVerified, sort])
+
+  const activeFilters = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onClear: () => void }> = []
+
+    if (status !== 'all') {
+      chips.push({ key: 'status', label: status === 'lost' ? 'Lost' : 'Found', onClear: () => setStatus('all') })
+    }
+    if (category) {
+      chips.push({ key: 'category', label: category, onClear: () => setCategory('') })
+    }
+    if (location) {
+      chips.push({ key: 'location', label: location, onClear: () => setLocation('') })
+    }
+    if (onlyWithPhoto) {
+      chips.push({ key: 'withPhoto', label: 'With photo', onClear: () => setOnlyWithPhoto(false) })
+    }
+    if (onlyVerified) {
+      chips.push({ key: 'verified', label: 'Verified', onClear: () => setOnlyVerified(false) })
+    }
+    if (q.trim()) {
+      chips.push({ key: 'query', label: `“${q.trim()}”`, onClear: () => setQ('') })
+    }
+
+    return chips
+  }, [category, location, onlyVerified, onlyWithPhoto, q, status])
+
+  const clearAllFilters = async () => {
+    setQ('')
+    setStatus('all')
+    setCategory('')
+    setLocation('')
+    setOnlyWithPhoto(false)
+    setOnlyVerified(false)
+    setSort('newest')
+    await load()
+  }
 
   return (
-    <section className="stack">
-      <PageHero
-        title="Lost & Found Workspace"
-        subtitle="Report, discover, and resolve ownership with trusted workflows, richer matches, and clear lifecycle tracking."
-        actions={
-          <>
-            <Link to="/new"><button type="button">Report an item</button></Link>
-            <Link to="/my-reports"><button className="button-neutral" type="button">Open control panel</button></Link>
-          </>
-        }
-        stats={[
-          { label: 'Total reports', value: stats.total },
-          { label: 'Active cases', value: stats.active },
-          { label: 'Lost', value: stats.lost },
-          { label: 'Found', value: stats.found },
-        ]}
-      />
+    <section className="stack board-page">
+      <form className="board-panel stack" onSubmit={onSearch}>
+        <BoardToolbar
+          q={q}
+          onQueryChange={setQ}
+          sort={sort}
+          onSortChange={setSort}
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters((value) => !value)}
+          hasActiveFilters={activeFilters.length > 0}
+          onClearAll={clearAllFilters}
+        />
 
-      <div className="layout-split">
-        <SectionCard title="Search board" subtitle="Find items using status and category filters.">
-          <form className="filters" onSubmit={onSearch}>
-            <label>Search<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Keyword, title, location" /></label>
-            <label>Status
-              <select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus | 'all')}>
-                <option value="all">All</option><option value="lost">Lost</option><option value="found">Found</option>
-              </select>
-            </label>
-            <label>Category<input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Accessories, Electronics..." /></label>
-            <button type="submit">Apply filters</button>
-          </form>
-          {error ? <p className="notice error" role="alert">{error}</p> : null}
-        </SectionCard>
+        <BoardFilters
+          expanded={showFilters}
+          status={status}
+          onStatusChange={(value) => setStatus(value as ItemStatus | 'all')}
+          category={category}
+          onCategoryChange={setCategory}
+          categories={categories}
+          location={location}
+          onLocationChange={setLocation}
+          locations={locationOptions}
+          onlyWithPhoto={onlyWithPhoto}
+          onOnlyWithPhotoChange={setOnlyWithPhoto}
+          onlyVerified={onlyVerified}
+          onOnlyVerifiedChange={setOnlyVerified}
+        />
 
-        <SectionCard title="Latest activity" subtitle="Recently posted reports across the board.">
-          <div className="timeline-list">
-            {latest.length === 0 ? <p className="subtle">No recent activity yet.</p> : latest.map((item) => (
-              <div className="timeline-item" key={item.id}>
-                <strong>#{item.id} {item.title}</strong>
-                <div className="status-row">
-                  <span className={`badge ${item.status}`}>{item.status}</span>
-                  <span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span>
-                  <span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>
-                </div>
-                <p className="subtle">{item.location} · {item.category}</p>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      </div>
+        <ActiveFilterChips chips={activeFilters} onClearAll={clearAllFilters} />
+        {error ? <p className="notice error" role="alert">{error}</p> : null}
+      </form>
 
-      <SectionCard title="Board results" subtitle="Premium card view with lifecycle and moderation readability.">
-        {loading ? <LoadingGrid count={6} /> : null}
-        {!loading && !error && items.length === 0 ? (
-          <EmptyState title="No reports found" subtitle="Try broader filters or create the first report for this category." action={<Link to="/new"><button type="button">Create report</button></Link>} />
-        ) : null}
-        <div className="grid">{items.map((item) => <ItemCard key={item.id} item={item} />)}</div>
-      </SectionCard>
+      {loading ? <LoadingGrid count={8} card /> : null}
+      {!loading && !error && visibleItems.length === 0 ? (
+        <EmptyState
+          title={activeFilters.length > 0 ? 'No matching reports' : 'No reports yet'}
+          subtitle={activeFilters.length > 0 ? 'Try adjusting filters or clearing them to explore more reports.' : 'Reports will appear here once community members publish lost or found items.'}
+          action={activeFilters.length > 0 ? <button type="button" className="button-neutral" onClick={clearAllFilters}>Clear filters</button> : undefined}
+        />
+      ) : null}
+
+      <BoardGrid items={visibleItems} />
     </section>
   )
 }
