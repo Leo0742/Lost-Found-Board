@@ -11,6 +11,21 @@ const initialsFrom = (name?: string | null, fallback = 'U') => {
   return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join('')
 }
 
+const normalizeAvatarUrl = (value?: string | null) => {
+  if (!value) return null
+  if (value.startsWith('/media/')) return value
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value)
+      if (parsed.pathname.startsWith('/media/')) return parsed.pathname
+      return value
+    } catch {
+      return value
+    }
+  }
+  return `/media/${value.replace(/^\/+/, '')}`
+}
+
 export const ProfilePage = () => {
   const { t, language, theme } = useSettings()
   const [loading, setLoading] = useState(true)
@@ -20,11 +35,32 @@ export const ProfilePage = () => {
   const [role, setRole] = useState<'admin' | 'moderator' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const [displayName, setDisplayName] = useState('')
   const [preferredContactMethod, setPreferredContactMethod] = useState('telegram')
   const [preferredContactDetails, setPreferredContactDetails] = useState('')
   const [pickupLocation, setPickupLocation] = useState('')
+
+  const applyProfile = (next: UserProfile) => {
+    setProfile(next)
+    setDisplayName(next.display_name ?? '')
+    setPreferredContactMethod(next.preferred_contact_method ?? 'telegram')
+    setPreferredContactDetails(next.preferred_contact_details ?? '')
+    setPickupLocation(next.pickup_location ?? '')
+  }
+
+  const fetchProfileWithAvatarSync = async () => {
+    let latest = await fetchMyProfile({ bypassCache: true })
+    applyProfile(latest)
+    if (latest.telegram_avatar_url || latest.avatar_url) return
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1200))
+      latest = await fetchMyProfile({ bypassCache: true })
+      applyProfile(latest)
+      if (latest.telegram_avatar_url || latest.avatar_url) return
+    }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -37,12 +73,8 @@ export const ProfilePage = () => {
         setProfile(null)
         return
       }
-      const meProfile = await fetchMyProfile()
-      setProfile(meProfile)
-      setDisplayName(meProfile.display_name ?? '')
-      setPreferredContactMethod(meProfile.preferred_contact_method ?? 'telegram')
-      setPreferredContactDetails(meProfile.preferred_contact_details ?? '')
-      setPickupLocation(meProfile.pickup_location ?? '')
+      const meProfile = await fetchMyProfile({ bypassCache: true })
+      applyProfile(meProfile)
     } catch {
       setError(t('profile.loadFailed'))
     } finally {
@@ -51,6 +83,33 @@ export const ProfilePage = () => {
   }
 
   useEffect(() => { void load() }, [])
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1800)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  useEffect(() => {
+    if (!linkCode || linked) return
+    const interval = window.setInterval(() => {
+      void (async () => {
+        try {
+          const me = await getAuthMe({ forceRefresh: true })
+          if (!me.linked) return
+          setLinked(true)
+          setRole(me.role ?? null)
+          await fetchProfileWithAvatarSync()
+          setLinkCode(null)
+          setCopied(false)
+          setMessage(t('profile.linkDetected'))
+        } catch {
+          // keep polling until linked or code cleared
+        }
+      })()
+    }, 3000)
+    return () => window.clearInterval(interval)
+  }, [linkCode, linked, t])
 
   const onSave = async (event: FormEvent) => {
     event.preventDefault()
@@ -74,6 +133,8 @@ export const ProfilePage = () => {
     () => initialsFrom(displayName || profile?.telegram_display_name || profile?.telegram_username || undefined),
     [displayName, profile?.telegram_display_name, profile?.telegram_username],
   )
+  const shownAvatarUrl = normalizeAvatarUrl(profile?.telegram_avatar_url || profile?.avatar_url)
+  const linkCommand = linkCode ? `/link ${linkCode}` : null
 
   return (
     <section className="stack">
@@ -96,8 +157,8 @@ export const ProfilePage = () => {
         <div className="layout-split">
           <SectionCard title={t('profile.identity')} subtitle={t('profile.identitySub')}>
             <div className="profile-identity">
-              {profile?.avatar_url ? (
-                <img className="profile-avatar" src={profile.avatar_url} alt={displayName || 'avatar'} />
+              {shownAvatarUrl ? (
+                <img className="profile-avatar" src={shownAvatarUrl ?? ''} alt={displayName || 'avatar'} />
               ) : (
                 <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">{avatarFallback}</div>
               )}
@@ -109,17 +170,50 @@ export const ProfilePage = () => {
             </div>
           </SectionCard>
 
-          <SectionCard title={t('profile.telegram')} subtitle={t('profile.telegramSub')}>
+          <SectionCard title={t('profile.telegram')}>
             {!linked ? (
-              <div className="stack">
-                <p className="subtle">{t('profile.telegramUnlinked')}</p>
-                <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('profile.generateCode')}</button>
-                {linkCode ? <p className="notice">{t('profile.sendCode')} <strong>/link {linkCode}</strong></p> : null}
+              <div className="stack compact-stack">
+                <div className="profile-link-code compact">
+                  <button type="button" onClick={async () => {
+                    const generated = await generateLinkCode()
+                    const command = `/link ${generated.code}`
+                    setLinkCode(generated.code)
+                    setCopied(false)
+                    setMessage(null)
+                    try {
+                      await navigator.clipboard.writeText(command)
+                      setCopied(true)
+                    } catch {
+                      // keep command visible for manual copy
+                    }
+                  }}>{t('profile.generateCopy')}</button>
+                  {linkCommand ? (
+                    <button
+                      type="button"
+                      className="button-neutral"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(linkCommand)
+                          setError(null)
+                          setCopied(true)
+                        } catch {
+                          setError(t('profile.copyFailed'))
+                        }
+                      }}
+                    >
+                      {copied ? t('profile.copied') : t('profile.copyCommand')}
+                    </button>
+                  ) : null}
+                </div>
+                {linkCommand ? <code className="profile-link-command">{linkCommand}</code> : null}
+                {linkCommand ? <span className="subtle">{t('profile.waitingForLink')}</span> : null}
               </div>
             ) : (
-              <div className="stack">
-                <p className="subtle">{t('profile.telegramLinked')}</p>
-                <p className="subtle">{profile?.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</p>
+              <div className="stack compact-stack">
+                <div className="profile-linked-row">
+                  <span className={`badge ${linked ? 'approved' : 'pending'}`}>{linked ? t('profile.linked') : t('profile.unlinked')}</span>
+                  <span className="subtle">{profile?.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
+                </div>
                 <button className="button-danger" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
               </div>
             )}

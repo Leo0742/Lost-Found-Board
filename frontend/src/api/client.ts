@@ -24,6 +24,12 @@ const fetchCsrfToken = async () => {
   return csrfPromise
 }
 
+export const refreshCsrfToken = async () => {
+  csrfToken = null
+  csrfPromise = null
+  return fetchCsrfToken()
+}
+
 apiClient.interceptors.request.use(async (config) => {
   const method = (config.method || 'get').toUpperCase()
   const requiresCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)

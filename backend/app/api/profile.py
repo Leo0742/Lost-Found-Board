@@ -6,7 +6,7 @@ from app.core.auth import get_authenticated_telegram_user_id, get_session_from_c
 from app.db.session import get_db
 from app.models.auth_session import WebAuthSession
 from app.models.user_profile import UserProfile
-from app.schemas.profile import ProfileRead, ProfileUpdate
+from app.schemas.profile import ProfileRead, ProfileUpdate, TelegramProfileSync
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
@@ -38,6 +38,7 @@ def _profile_read(profile: UserProfile) -> ProfileRead:
         preferred_contact_details=profile.preferred_contact_details,
         pickup_location=profile.pickup_location,
         avatar_url=profile.avatar_url,
+        telegram_avatar_url=profile.telegram_avatar_url,
         updated_at=profile.updated_at,
     )
 
@@ -93,6 +94,24 @@ def update_my_profile(
 @router.get("/internal/{telegram_user_id}", response_model=ProfileRead)
 def get_profile_internal(telegram_user_id: int, db: Session = Depends(get_db), _: None = Depends(require_internal_access)) -> ProfileRead:
     profile = _get_or_create_profile(db, telegram_user_id)
+    db.commit()
+    db.refresh(profile)
+    return _profile_read(profile)
+
+
+@router.post("/internal/sync-telegram", response_model=ProfileRead)
+def sync_telegram_profile_internal(
+    payload: TelegramProfileSync,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_internal_access),
+) -> ProfileRead:
+    profile = _get_or_create_profile(db, payload.telegram_user_id)
+    profile.telegram_username = _normalize(payload.telegram_username)
+    profile.telegram_display_name = _normalize(payload.telegram_display_name)
+    profile.telegram_avatar_url = _normalize(payload.telegram_avatar_url)
+    if not profile.display_name:
+        profile.display_name = profile.telegram_display_name or profile.telegram_username
+    db.add(profile)
     db.commit()
     db.refresh(profile)
     return _profile_read(profile)
