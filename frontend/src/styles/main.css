@@ -151,10 +151,38 @@ h1,h2,h3,h4 { letter-spacing: -0.02em; margin-top: 0; }
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: .75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .85rem;
   align-items: end;
   margin-bottom: 1rem;
+}
+.filter-field,
+.filter-actions {
+  min-width: 0;
+}
+.filter-field input,
+.filter-field select,
+.filter-field textarea {
+  width: 100%;
+  min-width: 0;
+}
+.filter-field.filter-field-wide {
+  grid-column: span 2;
+}
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+}
+.filter-actions button {
+  width: 100%;
+}
+
+.filters.admin-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.filters.audit-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 label { display: grid; gap: .4rem; font-weight: 500; color: var(--text); }
@@ -301,6 +329,14 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
   .header .container { flex-direction: column; align-items: flex-start; }
   .content { padding-top: .8rem; }
   .hero p { max-width: 100%; }
+  .filter-field.filter-field-wide { grid-column: span 1; }
+  .filters.admin-filters,
+  .filters.audit-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .filters.admin-filters,
+  .filters.audit-filters { grid-template-columns: 1fr; }
 }
 
 
@@ -346,6 +382,9 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .reports-tab.active span { background: rgba(255, 255, 255, 0.24); color: #fff; }
 .claim-feed { display: grid; gap: .85rem; }
 .quick-actions { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: .75rem; }
+.quick-actions .preset-active {
+  box-shadow: 0 0 0 2px rgba(53, 92, 255, 0.35), 0 10px 18px rgba(53, 92, 255, 0.28);
+}
 .quick-action-card { padding: .85rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
 .timeline-list { display: grid; gap: .7rem; }
 .timeline-item { border-left: 3px solid #cbd8f6; padding-left: .8rem; }

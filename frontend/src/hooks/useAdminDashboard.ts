@@ -82,7 +82,8 @@ export const useAdminDashboard = () => {
   const [queueSummary, setQueueSummary] = useState<AdminQueueSummary | null>(null)
   const [observability, setObservability] = useState<AdminObservability | null>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
-  const [itemFilters, setItemFilters] = useState<ItemFilters>(defaultItemFilters)
+  const [itemFilters, setItemFiltersState] = useState<ItemFilters>(defaultItemFilters)
+  const [activePreset, setActivePreset] = useState<QueuePreset | null>(null)
   const [auditFilters, setAuditFilters] = useState<AuditFilters>(defaultAuditFilters)
   const [itemsOffset, setItemsOffset] = useState(0)
   const [auditOffset, setAuditOffset] = useState(0)
@@ -112,14 +113,17 @@ export const useAdminDashboard = () => {
     const effectiveFilters = nextFilters ?? itemFilters
     const effectiveOffset = nextOffset ?? itemsOffset
     setLoadingItems(true)
+    setItemError(null)
     try {
+      const actorFilterRaw = effectiveFilters.actorFilter.trim()
+      const actorFilterId = actorFilterRaw ? Number(actorFilterRaw) : undefined
       const rows = await fetchAdminItems({
         moderation_status: effectiveFilters.moderationFilter === 'all' ? undefined : effectiveFilters.moderationFilter,
         lifecycle: effectiveFilters.lifecycleFilter === 'all' ? undefined : effectiveFilters.lifecycleFilter,
         status: effectiveFilters.statusFilter === 'all' ? undefined : effectiveFilters.statusFilter,
         is_verified: effectiveFilters.verifiedFilter === 'all' ? undefined : effectiveFilters.verifiedFilter === 'verified',
         category: effectiveFilters.categoryFilter || undefined,
-        actor_telegram_user_id: effectiveFilters.actorFilter ? Number(effectiveFilters.actorFilter) : undefined,
+        actor_telegram_user_id: Number.isFinite(actorFilterId) ? actorFilterId : undefined,
         q: effectiveFilters.query || undefined,
         created_from: effectiveFilters.createdFrom || undefined,
         created_to: effectiveFilters.createdTo || undefined,
@@ -287,30 +291,44 @@ export const useAdminDashboard = () => {
   }, [collectRefreshWarnings, loadAudit, loadItems, loadStats])
 
   const applyPreset = useCallback(async (preset: QueuePreset) => {
-    const nextFilters: ItemFilters = {
-      ...defaultItemFilters,
-      lifecycleFilter: 'active',
+    const presetFilters: Record<QueuePreset, ItemFilters> = {
+      flagged: {
+        ...defaultItemFilters,
+        lifecycleFilter: 'active',
+        moderationFilter: 'flagged',
+        sortBy: 'moderated_at',
+      },
+      pending: {
+        ...defaultItemFilters,
+        lifecycleFilter: 'active',
+        moderationFilter: 'pending',
+        sortBy: 'created_at',
+      },
+      recent: {
+        ...defaultItemFilters,
+        lifecycleFilter: 'active',
+        moderationFilter: 'all',
+        sortBy: 'updated_at',
+      },
+      suspicious: {
+        ...defaultItemFilters,
+        lifecycleFilter: 'active',
+        moderationFilter: 'flagged',
+        sortBy: 'moderated_at',
+        suspiciousOnly: true,
+      },
     }
-
-    if (preset === 'flagged') {
-      nextFilters.moderationFilter = 'flagged'
-      nextFilters.sortBy = 'moderated_at'
-    } else if (preset === 'pending') {
-      nextFilters.moderationFilter = 'pending'
-      nextFilters.sortBy = 'created_at'
-    } else if (preset === 'recent') {
-      nextFilters.moderationFilter = 'all'
-      nextFilters.sortBy = 'updated_at'
-    } else {
-      nextFilters.moderationFilter = 'flagged'
-      nextFilters.sortBy = 'moderated_at'
-      nextFilters.suspiciousOnly = true
-    }
-
+    const nextFilters = presetFilters[preset]
+    setActivePreset(preset)
     setItemsOffset(0)
-    setItemFilters(nextFilters)
-    await loadItems(nextFilters, 0)
+    setItemFiltersState(nextFilters)
+    await loadItems(nextFilters, 0, { forceSignals: true })
   }, [loadItems])
+
+  const setItemFilters = useCallback((nextFilters: ItemFilters) => {
+    setActivePreset(null)
+    setItemFiltersState(nextFilters)
+  }, [])
 
   const summary = useMemo(() => ({
     pending: items.filter((item) => item.moderation_status === 'pending').length,
@@ -334,6 +352,7 @@ export const useAdminDashboard = () => {
     auditEvents,
     itemFilters,
     setItemFilters,
+    activePreset,
     auditFilters,
     setAuditFilters,
     itemsOffset,
