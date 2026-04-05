@@ -692,14 +692,26 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
   animation: profile-card-enter .28s ease-out both;
 }
 
-.profile-identity-shell {
-  position: relative;
-  padding: .15rem 2.35rem .35rem 0;
+.profile-identity-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+  padding-bottom: .25rem;
+}
+
+.profile-identity-main {
+  min-width: 0;
 }
 
 .profile-identity.compact {
   grid-template-columns: 64px 1fr;
   gap: 1rem;
+}
+
+.profile-identity-actions {
+  justify-self: end;
+  align-self: start;
 }
 
 .profile-identity-text strong {
@@ -713,19 +725,19 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 }
 
 .profile-unlink-icon-button {
-  position: absolute;
-  top: .1rem;
-  right: .1rem;
-  width: 2rem;
-  height: 2rem;
+  position: static;
+  min-height: 2rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-muted);
   color: var(--danger);
-  display: grid;
-  place-items: center;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .35rem .72rem;
+  white-space: nowrap;
   transition: transform .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .2s ease;
+  box-shadow: none;
 }
 
 .profile-unlink-icon-button:hover {
@@ -764,6 +776,15 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 }
 
 @media (max-width: 720px) {
+  .profile-identity-banner {
+    grid-template-columns: 1fr;
+    gap: .6rem;
+  }
+
+  .profile-identity-actions {
+    justify-self: start;
+  }
+
   .profile-add-contact-inline {
     grid-template-columns: 1fr;
   }

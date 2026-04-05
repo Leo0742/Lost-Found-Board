@@ -239,6 +239,7 @@ export const ProfilePage = () => {
   const [addressLat, setAddressLat] = useState<number | null>(null)
   const [addressLon, setAddressLon] = useState<number | null>(null)
   const suggestions = useYandexSuggest(addressText)
+  const [copiedLinkCommand, setCopiedLinkCommand] = useState(false)
 
   const applyProfile = (next: UserProfile) => {
     setProfile(next)
@@ -330,6 +331,8 @@ export const ProfilePage = () => {
     setShowAddAddress(false)
   }
 
+  const linkCommand = linkCode ? `/link ${linkCode}` : null
+
   return (
     <section className="stack">
       {loading ? <LoadingGrid count={2} /> : null}
@@ -339,15 +342,19 @@ export const ProfilePage = () => {
       {!loading && linked && profile ? (
         <section className="dashboard-block stack profile-identity-card">
           <form className="form stack" onSubmit={onSave}>
-            <div className="profile-identity compact">
-              {normalizeAvatarUrl(profile?.telegram_avatar_url || profile?.avatar_url)
-                ? <img className="profile-avatar" src={normalizeAvatarUrl(profile?.telegram_avatar_url || profile?.avatar_url) ?? ''} alt={displayName || 'avatar'} />
-                : <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">U</div>}
-              <div className="profile-identity-text stack" style={{ gap: '.25rem' }}>
-                <strong>{displayName || profile.telegram_display_name || profile.telegram_username || t('profile.unknown')}</strong>
-                <span className="subtle">{profile.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
+            <div className="profile-identity-banner">
+              <div className="profile-identity compact profile-identity-main">
+                {normalizeAvatarUrl(profile?.telegram_avatar_url || profile?.avatar_url)
+                  ? <img className="profile-avatar" src={normalizeAvatarUrl(profile?.telegram_avatar_url || profile?.avatar_url) ?? ''} alt={displayName || 'avatar'} />
+                  : <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">U</div>}
+                <div className="profile-identity-text stack" style={{ gap: '.25rem' }}>
+                  <strong>{displayName || profile.telegram_display_name || profile.telegram_username || t('profile.unknown')}</strong>
+                  <span className="subtle">{profile.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
+                </div>
               </div>
-              <button className="button-neutral button-sm" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
+              <div className="profile-identity-actions">
+                <button className="button-neutral button-sm profile-unlink-icon-button" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
+              </div>
             </div>
 
             <label>{t('profile.displayName')}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={120} /></label>
@@ -480,8 +487,28 @@ export const ProfilePage = () => {
             <button type="button" className="button-sm" onClick={async () => {
               const generated = await generateLinkCode()
               setLinkCode(generated.code)
+              setCopiedLinkCommand(false)
             }}>{t('profile.generateCopy')}</button>
-            {linkCode ? <code className="profile-link-command">/link {linkCode}</code> : null}
+            {linkCommand ? (
+              <div className="profile-link-code">
+                <code className="profile-link-command">{linkCommand}</code>
+                <button
+                  type="button"
+                  className="button-neutral button-sm"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(linkCommand)
+                      setCopiedLinkCommand(true)
+                      window.setTimeout(() => setCopiedLinkCommand(false), 1200)
+                    } catch {
+                      setCopiedLinkCommand(false)
+                    }
+                  }}
+                >
+                  {copiedLinkCommand ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            ) : null}
           </div>
           <EmptyState title={t('profile.linkToEditTitle')} subtitle={t('profile.linkToEditSub')} action={<Link to="/"><button type="button" className="button-neutral">{t('nav.items')}</button></Link>} />
         </SectionCard>
