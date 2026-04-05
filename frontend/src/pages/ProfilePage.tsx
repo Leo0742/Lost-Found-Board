@@ -172,24 +172,32 @@ export const ProfilePage = () => {
       {message ? <p className="notice success">{message}</p> : null}
 
       {!loading && linked && profile ? (
-        <SectionCard title={t('profile.identity')}>
+        <section className="dashboard-block stack profile-identity-card">
           <form className="form stack" onSubmit={onSave}>
-            <div className="profile-identity compact">
-              {shownAvatarUrl ? (
-                <img className="profile-avatar" src={shownAvatarUrl ?? ''} alt={displayName || 'avatar'} />
-              ) : (
-                <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">{avatarFallback}</div>
-              )}
-              <div className="stack" style={{ gap: '.25rem' }}>
-                <strong>{displayName || profile.telegram_display_name || profile.telegram_username || t('profile.unknown')}</strong>
-                <span className="subtle">{profile.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
-              </div>
-            </div>
+            <div className="profile-identity-shell">
+              <button
+                className="profile-unlink-icon-button"
+                type="button"
+                title={t('profile.unlink')}
+                aria-label={t('profile.unlink')}
+                onClick={async () => { await unlinkTelegram(); await load() }}
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                  <path d="M12 2a1 1 0 0 1 1 1v9a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm6.36 3.64a1 1 0 0 1 1.41 1.41A8.97 8.97 0 0 1 21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9c0-1.88.57-3.63 1.55-5.09a1 1 0 1 1 1.66 1.12A6.98 6.98 0 0 0 5 12a7 7 0 1 0 12.36-4.95Z" fill="currentColor" />
+                </svg>
+              </button>
 
-            <div className="profile-link-code compact">
-              {linked ? (
-                <button className="button-danger button-sm" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
-              ) : null}
+              <div className="profile-identity compact">
+                {shownAvatarUrl ? (
+                  <img className="profile-avatar" src={shownAvatarUrl ?? ''} alt={displayName || 'avatar'} />
+                ) : (
+                  <div className="profile-avatar profile-avatar-fallback" aria-hidden="true">{avatarFallback}</div>
+                )}
+                <div className="profile-identity-text stack" style={{ gap: '.25rem' }}>
+                  <strong>{displayName || profile.telegram_display_name || profile.telegram_username || t('profile.unknown')}</strong>
+                  <span className="subtle">{profile.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
+                </div>
+              </div>
             </div>
 
             <label>{t('profile.displayName')}
@@ -265,7 +273,7 @@ export const ProfilePage = () => {
 
             {dirty ? <button type="submit">{t('profile.save')}</button> : null}
           </form>
-        </SectionCard>
+        </section>
       ) : null}
 
       {!loading && !linked ? (
