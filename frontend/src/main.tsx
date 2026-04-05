@@ -7,6 +7,7 @@ import { NewItemPage } from './pages/NewItemPage'
 import { ItemDetailsPage } from './pages/ItemDetailsPage'
 import { MyReportsPage } from './pages/MyReportsPage'
 import { AdminPage } from './pages/AdminPage'
+import { ProfilePage } from './pages/ProfilePage'
 import './styles/main.css'
 import { SettingsProvider } from './context/SettingsContext'
 
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="my-reports" element={<MyReportsPage />} />
           <Route path="items/:id" element={<ItemDetailsPage />} />
           <Route path="admin" element={<AdminPage />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Route>
       </Routes>

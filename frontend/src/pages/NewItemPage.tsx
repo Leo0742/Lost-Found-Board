@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
-import { useNavigate } from 'react-router-dom'
-import { createItem, uploadItemImage, getAuthMe, generateLinkCode, fetchCategories, suggestCategory } from '../api/items'
+import { Link, useNavigate } from 'react-router-dom'
+import { createItem, uploadItemImage, getAuthMe, fetchCategories, suggestCategory, fetchMyProfile } from '../api/items'
 import { ItemStatus } from '../types/item'
 import { EmptyState, PageHero, SectionCard } from '../components/ui'
 import { useSettings } from '../context/SettingsContext'
@@ -30,28 +30,32 @@ export const NewItemPage = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
-  const [linkCode, setLinkCode] = useState<string | null>(null)
-  const [isCheckingLink, setIsCheckingLink] = useState(false)
   const [categories, setCategories] = useState<string[]>(['Other'])
   const [categoryHint, setCategoryHint] = useState<{ category: string; confidence: number } | null>(null)
   const navigate = useNavigate()
 
-  const refreshAuthState = useCallback(async (options?: { silent?: boolean; forceRefresh?: boolean }) => {
-    if (!options?.silent) setIsCheckingLink(true)
-    try {
-      const me = await getAuthMe({ forceRefresh: options?.forceRefresh ?? false })
-      setLinkedUserId(me.identity?.telegram_user_id ?? null)
-      if (me.identity?.telegram_username) {
-        setTelegramUsername(`@${me.identity.telegram_username}`)
-      }
-      if (me.identity?.telegram_user_id) {
-        setLinkCode(null)
-      }
-      return me
-    } finally {
-      if (!options?.silent) setIsCheckingLink(false)
+  const refreshAuthState = useCallback(async () => {
+    const me = await getAuthMe({ forceRefresh: true })
+    setLinkedUserId(me.identity?.telegram_user_id ?? null)
+    if (me.identity?.telegram_username) {
+      setTelegramUsername(`@${me.identity.telegram_username}`)
     }
-  }, [])
+    if (me.linked && me.identity?.telegram_user_id) {
+      const profile = await fetchMyProfile()
+      if (!contactName && profile.display_name) {
+        setContactName(profile.display_name)
+      }
+      if (!location && profile.pickup_location) {
+        setLocation(profile.pickup_location)
+      }
+      if (!telegramUsername && profile.telegram_username) {
+        setTelegramUsername(`@${String(profile.telegram_username).replace(/^@/, '')}`)
+      }
+      if (profile.preferred_contact_method && profile.preferred_contact_details && !contactName) {
+        setContactName(`${profile.preferred_contact_method}: ${profile.preferred_contact_details}`.slice(0, 80))
+      }
+    }
+  }, [contactName, location, telegramUsername])
 
   useEffect(() => {
     refreshAuthState().catch(() => setError(t('new.authInitFailed')))
@@ -59,14 +63,6 @@ export const NewItemPage = () => {
       if (data.length > 0) setCategories(data)
     }).catch(() => setCategories(['Other']))
   }, [refreshAuthState, t])
-
-  useEffect(() => {
-    if (!linkCode || linkedUserId) return
-    const interval = window.setInterval(() => {
-      refreshAuthState({ silent: true, forceRefresh: true }).catch(() => undefined)
-    }, 2500)
-    return () => window.clearInterval(interval)
-  }, [linkCode, linkedUserId, refreshAuthState])
 
   useEffect(() => {
     const normalized = title.trim()
@@ -123,6 +119,14 @@ export const NewItemPage = () => {
         stats={[{ label: t('new.stats.completion'), value: `${completionScore}%` }, { label: t('new.stats.ownership'), value: linkedUserId ? t('new.linked') : t('new.notLinked') }]}
       />
 
+      {!linkedUserId ? (
+        <SectionCard title={t('new.profileRequiredTitle')} subtitle={t('new.profileRequiredSubtitle')}>
+          <div className="actions-row">
+            <Link to="/profile"><button type="button">{t('new.goProfile')}</button></Link>
+          </div>
+        </SectionCard>
+      ) : null}
+
       <div className="layout-split">
         <SectionCard title={t('new.form.title')} subtitle={t('new.form.subtitle')}>
           <form className="form stack" onSubmit={onSubmit}>
@@ -169,24 +173,7 @@ export const NewItemPage = () => {
             </div>
           </SectionCard>
 
-          {!linkedUserId ? (
-            <SectionCard title={t('new.linkTelegram.title')} subtitle={t('new.linkTelegram.subtitle')}>
-              <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('new.linkTelegram.generate')}</button>
-              {linkCode ? <p className="notice">{t('reports.connect.send')} <strong>/link {linkCode}</strong></p> : null}
-              {linkCode ? (
-                <div className="actions-row">
-                  <button
-                    type="button"
-                    className="button-neutral"
-                    disabled={isCheckingLink}
-                    onClick={() => refreshAuthState({ forceRefresh: true }).catch(() => setError(t('new.linkTelegram.refreshFailed')))}
-                  >
-                    {isCheckingLink ? t('common.loading') : t('new.linkTelegram.done')}
-                  </button>
-                </div>
-              ) : null}
-            </SectionCard>
-          ) : <EmptyState title={t('new.telegramLinked')} subtitle={t('new.telegramLinkedSub')} />}
+          <EmptyState title={t('new.profileHintTitle')} subtitle={t('new.profileHintSubtitle')} action={<Link to="/profile"><button type="button" className="button-neutral">{t('new.goProfile')}</button></Link>} />
         </div>
       </div>
     </section>

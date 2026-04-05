@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { generateLinkCode, getAuthMe } from '../api/items'
+import { Link } from 'react-router-dom'
+import { getAuthMe } from '../api/items'
 import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
 import { AdminFiltersPanel } from '../components/admin/AdminFiltersPanel'
 import { AllReportsSection } from '../components/admin/AllReportsSection'
@@ -25,7 +26,6 @@ export const AdminPage = () => {
   const [role, setRole] = useState<'admin' | 'moderator' | null>(null)
   const [linkedUsername, setLinkedUsername] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
-  const [linkCode, setLinkCode] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
 
   const {
@@ -141,9 +141,8 @@ export const AdminPage = () => {
       {observabilityError ? <p className="notice error">{observabilityError}</p> : null}
 
       {!authLoading && !linked ? (
-        <SectionCard title={t('admin.connectFirst')} subtitle={t('admin.connectSub')}>
-          <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('reports.connect.generate')}</button>
-          {linkCode ? <p className="notice">{t('admin.sendBot')} <strong>/link {linkCode}</strong></p> : null}
+        <SectionCard title={t('admin.connectFirst')} subtitle={t('reports.profileOnly')}>
+          <Link to="/profile"><button type="button">{t('new.goProfile')}</button></Link>
         </SectionCard>
       ) : null}
 

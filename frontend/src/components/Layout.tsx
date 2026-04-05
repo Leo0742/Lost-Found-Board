@@ -63,6 +63,7 @@ export const Layout = () => {
             <NavLink to="/">{t('nav.items')}</NavLink>
             <NavLink to="/new">{t('nav.report')}</NavLink>
             <NavLink to="/my-reports">{t('nav.myReports')}</NavLink>
+            <NavLink to="/profile">{t('nav.profile')}</NavLink>
             {role ? <NavLink to="/admin">{t('nav.moderation')}</NavLink> : null}
           </nav>
           <div className="header-right" ref={settingsRef}>

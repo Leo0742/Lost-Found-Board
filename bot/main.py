@@ -114,7 +114,7 @@ STEP_META = {
     "location": {
         "state": NewItemForm.location,
         "title": "Location",
-        "prompt": "Where was it lost/found?",
+        "prompt": "Where was it lost/found? (type 'profile' to use saved pickup location)",
     },
     "description": {
         "state": NewItemForm.description,
@@ -124,7 +124,7 @@ STEP_META = {
     "contact": {
         "state": NewItemForm.contact,
         "title": "Contact",
-        "prompt": "Contact name? (or type 'me' to use your Telegram username)",
+        "prompt": "Contact name? (or type 'me' for username, 'profile' for saved preference)",
     },
     "photo": {
         "state": NewItemForm.photo,
@@ -322,6 +322,12 @@ async def _ask_step(message: Message, state: FSMContext, step_key: str) -> None:
     await state.set_state(STEP_META[step_key]["state"])
     keyboard = PHOTO_STEP_KEYBOARD if step_key == "photo" else STATUS_KEYBOARD if step_key == "status" else FORM_KEYBOARD
     prompt = f"{_step_header(step_key)}\n{STEP_META[step_key]['prompt']}"
+    if step_key in {"location", "contact"}:
+        data = await state.get_data()
+        if step_key == "location" and data.get("profile_default_location"):
+            prompt += f"\nSaved profile location: {data.get('profile_default_location')}"
+        if step_key == "contact" and data.get("profile_default_contact"):
+            prompt += f"\nSaved profile contact: {data.get('profile_default_contact')}"
     if step_key == "category":
         data = await state.get_data()
         title = str(data.get("title", "")).strip()
@@ -576,7 +582,7 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
         await message.answer("Could not link this code. It may be expired. Generate a new code on the website.", reply_markup=MAIN_KEYBOARD)
         return
     await message.answer(
-        "✅ Website linked to your Telegram account.\nReload My Reports on the website to see synced ownership and claims.",
+        "✅ Website linked to your Telegram account.\nReload Profile/My Reports on the website to see synced ownership and claims.",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -602,6 +608,16 @@ async def cmd_flag(message: Message, command: CommandObject) -> None:
 @dp.message(Command("new"))
 async def cmd_new(message: Message, state: FSMContext) -> None:
     await _clear_state(state)
+    user = message.from_user
+    if user:
+        try:
+            profile = await api.get_profile_internal(user.id)
+            await state.update_data(
+                profile_default_contact=profile.get("preferred_contact_details") or profile.get("display_name"),
+                profile_default_location=profile.get("pickup_location"),
+            )
+        except httpx.HTTPError:
+            pass
     await _ask_step(message, state, "status")
 
 
@@ -740,7 +756,9 @@ async def form_category(message: Message, state: FSMContext) -> None:
 
 @dp.message(NewItemForm.location)
 async def form_location(message: Message, state: FSMContext) -> None:
-    location = message.text.strip()
+    data = await state.get_data()
+    location_raw = message.text.strip()
+    location = str(data.get('profile_default_location', '')).strip() if location_raw.lower() == 'profile' else location_raw
     if not await _check_length(message, "location", location):
         return
     await _store_and_continue(message, state, "location", location)
@@ -757,8 +775,12 @@ async def form_description(message: Message, state: FSMContext) -> None:
 @dp.message(NewItemForm.contact)
 async def form_contact(message: Message, state: FSMContext) -> None:
     username = message.from_user.username
+    data = await state.get_data()
     contact_raw = message.text.strip()
-    contact_name = f"@{username}" if contact_raw.lower() == "me" and username else contact_raw
+    if contact_raw.lower() == 'profile' and data.get('profile_default_contact'):
+        contact_name = str(data.get('profile_default_contact'))
+    else:
+        contact_name = f"@{username}" if contact_raw.lower() == "me" and username else contact_raw
     if not await _check_length(message, "contact_name", contact_name):
         return
     await _store_and_continue(message, state, "contact", contact_name)

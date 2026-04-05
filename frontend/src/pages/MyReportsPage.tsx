@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AxiosError } from 'axios'
-import { claimAction, fetchMyItems, generateLinkCode, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem, unlinkTelegram } from '../api/items'
+import { claimAction, fetchMyItems, getAuthMe, listClaims, resolveItem, reopenItem, softDeleteItem } from '../api/items'
 import { Claim, Item } from '../types/item'
 import { Link } from 'react-router-dom'
 import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
@@ -17,7 +17,6 @@ export const MyReportsPage = () => {
   const [outgoingError, setOutgoingError] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [linkedUsername, setLinkedUsername] = useState<string | null>(null)
-  const [linkCode, setLinkCode] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true); setError(null); setIncomingError(null); setOutgoingError(null)
@@ -30,7 +29,6 @@ export const MyReportsPage = () => {
       setLinkedUserId(me.identity.telegram_user_id)
       setLinkedUsername(me.identity.telegram_username || null)
       setItems((await fetchMyItems()).sort((a, b) => b.id - a.id))
-      setLinkCode(null)
       try { setIncomingClaims(await listClaims('incoming') as Claim[]) } catch { setIncomingError(t('reports.incomingUnavailable')); setIncomingClaims([]) }
       try { setOutgoingClaims(await listClaims('outgoing') as Claim[]) } catch { setOutgoingError(t('reports.outgoingUnavailable')); setOutgoingClaims([]) }
     } catch (err) {
@@ -73,9 +71,8 @@ export const MyReportsPage = () => {
       {error ? <p className="notice error">{error}</p> : null}
 
       {!loading && !linkedUserId ? (
-        <SectionCard title={t('reports.connect.title')} subtitle={t('reports.connect.subtitle')}>
-          <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('reports.connect.generate')}</button>
-          {linkCode ? <p className="notice">{t('reports.connect.send')} <strong>/link {linkCode}</strong></p> : null}
+        <SectionCard title={t('reports.connect.title')} subtitle={t('reports.profileOnly')}>
+          <Link to="/profile"><button type="button">{t('new.goProfile')}</button></Link>
         </SectionCard>
       ) : null}
 
@@ -128,7 +125,7 @@ export const MyReportsPage = () => {
             </SectionCard>
 
             <SectionCard title={t('reports.accountTitle')} subtitle={`${t('reports.signedInAs')} ${linkedUsername ? `@${linkedUsername}` : linkedUserId}`}>
-              <button type="button" className="button-danger" onClick={async () => { await unlinkTelegram(); await load() }}>{t('reports.unlink')}</button>
+              <p className="subtle">{t('reports.profileOnly')}</p><Link to="/profile"><button type="button" className="button-neutral">{t('new.goProfile')}</button></Link>
             </SectionCard>
           </div>
         </div>

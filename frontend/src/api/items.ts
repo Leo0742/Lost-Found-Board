@@ -42,6 +42,27 @@ export type ModerationSignal = {
 }
 
 
+
+export type UserProfile = {
+  telegram_user_id: number
+  telegram_username?: string | null
+  telegram_display_name?: string | null
+  display_name?: string | null
+  preferred_contact_method?: string | null
+  preferred_contact_details?: string | null
+  pickup_location?: string | null
+  avatar_url?: string | null
+  updated_at?: string | null
+}
+
+export type UserProfileUpdate = {
+  display_name?: string | null
+  preferred_contact_method?: string | null
+  preferred_contact_details?: string | null
+  pickup_location?: string | null
+  avatar_url?: string | null
+}
+
 export type AdminItemsParams = {
   moderation_status?: string
   lifecycle?: string
@@ -172,6 +193,17 @@ export const getAuthMe = async (options?: { forceRefresh?: boolean }) => {
 
 export const generateLinkCode = async () => {
   const response = await apiClient.post<{ code: string; expires_at: string }>('/auth/link-code')
+  return response.data
+}
+
+
+export const fetchMyProfile = async () => {
+  const response = await apiClient.get<UserProfile>('/profile/me')
+  return response.data
+}
+
+export const updateMyProfile = async (payload: UserProfileUpdate) => {
+  const response = await apiClient.put<UserProfile>('/profile/me', payload)
   return response.data
 }
 

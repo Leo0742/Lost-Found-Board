@@ -605,3 +605,26 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
     left: 0;
   }
 }
+
+.profile-identity {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .85rem;
+  align-items: center;
+}
+
+.profile-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.profile-avatar-fallback {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--primary-strong);
+}
