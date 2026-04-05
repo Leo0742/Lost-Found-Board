@@ -3,10 +3,12 @@ import { fetchCategories, fetchItems } from '../api/items'
 import { Item, ItemStatus } from '../types/item'
 import { EmptyState, LoadingGrid } from '../components/ui'
 import { ActiveFilterChips, BoardFilters, BoardGrid, BoardToolbar } from '../components/board'
+import { useSettings } from '../context/SettingsContext'
 
 type SortOption = 'newest' | 'oldest' | 'title'
 
 export const HomePage = () => {
+  const { t } = useSettings()
   const [items, setItems] = useState<Item[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,7 +30,7 @@ export const HomePage = () => {
     } catch (err) {
       console.error('Failed to load items', err)
       setItems([])
-      setError('Unable to load items right now. Please try again.')
+      setError(t('home.error.loadItems'))
     } finally {
       setLoading(false)
     }
@@ -90,7 +92,7 @@ export const HomePage = () => {
     const chips: Array<{ key: string; label: string; onClear: () => void }> = []
 
     if (status !== 'all') {
-      chips.push({ key: 'status', label: status === 'lost' ? 'Lost' : 'Found', onClear: () => setStatus('all') })
+      chips.push({ key: 'status', label: status === 'lost' ? t('board.status.lost') : t('board.status.found'), onClear: () => setStatus('all') })
     }
     if (category) {
       chips.push({ key: 'category', label: category, onClear: () => setCategory('') })
@@ -99,17 +101,17 @@ export const HomePage = () => {
       chips.push({ key: 'location', label: location, onClear: () => setLocation('') })
     }
     if (onlyWithPhoto) {
-      chips.push({ key: 'withPhoto', label: 'With photo', onClear: () => setOnlyWithPhoto(false) })
+      chips.push({ key: 'withPhoto', label: t('board.filter.withPhoto'), onClear: () => setOnlyWithPhoto(false) })
     }
     if (onlyVerified) {
-      chips.push({ key: 'verified', label: 'Verified', onClear: () => setOnlyVerified(false) })
+      chips.push({ key: 'verified', label: t('board.filter.verified'), onClear: () => setOnlyVerified(false) })
     }
     if (q.trim()) {
       chips.push({ key: 'query', label: `“${q.trim()}”`, onClear: () => setQ('') })
     }
 
     return chips
-  }, [category, location, onlyVerified, onlyWithPhoto, q, status])
+  }, [category, location, onlyVerified, onlyWithPhoto, q, status, t])
 
   const clearAllFilters = async () => {
     setQ('')
@@ -159,9 +161,9 @@ export const HomePage = () => {
       {loading ? <LoadingGrid count={8} card /> : null}
       {!loading && !error && visibleItems.length === 0 ? (
         <EmptyState
-          title={activeFilters.length > 0 ? 'No matching reports' : 'No reports yet'}
-          subtitle={activeFilters.length > 0 ? 'Try adjusting filters or clearing them to explore more reports.' : 'Reports will appear here once community members publish lost or found items.'}
-          action={activeFilters.length > 0 ? <button type="button" className="button-neutral" onClick={clearAllFilters}>Clear filters</button> : undefined}
+          title={activeFilters.length > 0 ? t('board.empty.noMatching') : t('board.empty.noReports')}
+          subtitle={activeFilters.length > 0 ? t('board.empty.noMatchingSub') : t('board.empty.noReportsSub')}
+          action={activeFilters.length > 0 ? <button type="button" className="button-neutral" onClick={clearAllFilters}>{t('common.clearAll')}</button> : undefined}
         />
       ) : null}
 

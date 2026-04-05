@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import router as auth_router
 from app.api.items import router as items_router
+from app.api.profile import router as profile_router
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.services.matching import semantic_runtime_status, warmup_embedding_model
@@ -211,3 +212,4 @@ def ready(db: Session = Depends(get_db)) -> dict:
 
 app.include_router(items_router)
 app.include_router(auth_router)
+app.include_router(profile_router)
