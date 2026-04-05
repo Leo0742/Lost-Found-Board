@@ -12,7 +12,7 @@ const translations: Record<Language, TranslationDict> = {
   en: {
     'app.title': 'Lost & Found Board',
     'nav.items': 'Items',
-    'nav.report': 'Report Item',
+    'nav.report': 'Create Report',
     'nav.myReports': 'My Reports',
     'nav.profile': 'Profile',
     'nav.moderation': 'Moderation',
@@ -221,7 +221,7 @@ const translations: Record<Language, TranslationDict> = {
   ru: {
     'app.title': 'Бюро находок',
     'nav.items': 'Объявления',
-    'nav.report': 'Сообщить о вещи',
+    'nav.report': 'Создать объявление',
     'nav.myReports': 'Мои объявления',
     'nav.profile': 'Профиль',
     'nav.moderation': 'Модерация',

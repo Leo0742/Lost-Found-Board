@@ -93,7 +93,7 @@ export const MyReportsPage = () => {
 
           {activeTab === 'my' ? (
             <SectionCard title={t('reports.my.title')} subtitle={t('reports.my.subtitle')}>
-              {items.length === 0 ? <EmptyState title={t('board.empty.noReports')} subtitle={t('reports.my.emptySub')} action={<Link to="/new"><button type="button">{t('reports.my.create')}</button></Link>} /> : (
+              {items.length === 0 ? <EmptyState title={t('board.empty.noReports')} subtitle={t('reports.my.emptySub')} /> : (
                 <div className="grid">
                   {items.map((item) => (
                     <article key={item.id} className="card stack">
