@@ -1,9 +1,9 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import { Link, useNavigate } from 'react-router-dom'
 import { createItem, uploadItemImage, getAuthMe, fetchCategories, suggestCategory, fetchMyProfile } from '../api/items'
 import { ItemStatus } from '../types/item'
-import { EmptyState, PageHero, SectionCard } from '../components/ui'
+import { SectionCard } from '../components/ui'
 import { useSettings } from '../context/SettingsContext'
 
 const formatBackendValidationError = (error: unknown): string => {
@@ -89,11 +89,6 @@ export const NewItemPage = () => {
     return () => clearTimeout(timer)
   }, [title])
 
-  const completionScore = useMemo(() => {
-    const fields = [title, description, category, location, contactName, photoFile ? 'yes' : '']
-    return Math.round((fields.filter((field) => field.trim().length > 0).length / fields.length) * 100)
-  }, [title, description, category, location, contactName, photoFile])
-
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
@@ -119,12 +114,6 @@ export const NewItemPage = () => {
 
   return (
     <section className="stack">
-      <PageHero
-        title={t('new.hero.title')}
-        subtitle={t('new.hero.subtitle')}
-        stats={[{ label: t('new.stats.completion'), value: `${completionScore}%` }, { label: t('new.stats.ownership'), value: linkedUserId ? t('new.linked') : t('new.notLinked') }]}
-      />
-
       {!linkedUserId ? (
         <SectionCard title={t('new.profileRequiredTitle')} subtitle={t('new.profileRequiredSubtitle')}>
           <div className="actions-row">
@@ -133,7 +122,7 @@ export const NewItemPage = () => {
         </SectionCard>
       ) : null}
 
-      <div className="layout-split">
+      <div className="new-item-main">
         <SectionCard title={t('new.form.title')} subtitle={t('new.form.subtitle')}>
           <form className="form stack" onSubmit={onSubmit}>
             <label>{t('new.reportType')}<select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}><option value="lost">{t('board.status.lost')}</option><option value="found">{t('board.status.found')}</option></select></label>
@@ -176,19 +165,6 @@ export const NewItemPage = () => {
             <div className="actions-row"><button type="submit" disabled={!linkedUserId}>{t('new.create')}</button><button className="button-neutral" type="button" onClick={() => navigate('/')}>{t('common.cancel')}</button></div>
           </form>
         </SectionCard>
-
-        <div className="stack sticky-side">
-          <SectionCard title={t('new.checklist.title')} subtitle={t('new.checklist.subtitle')}>
-            <div className="timeline-list">
-              <div className="timeline-item">{t('new.checklist.1')}</div>
-              <div className="timeline-item">{t('new.checklist.2')}</div>
-              <div className="timeline-item">{t('new.checklist.3')}</div>
-              <div className="timeline-item">{t('new.checklist.4')}</div>
-            </div>
-          </SectionCard>
-
-          <EmptyState title={t('new.profileHintTitle')} subtitle={t('new.profileHintSubtitle')} action={<Link to="/profile"><button type="button" className="button-neutral">{t('new.goProfile')}</button></Link>} />
-        </div>
       </div>
     </section>
   )

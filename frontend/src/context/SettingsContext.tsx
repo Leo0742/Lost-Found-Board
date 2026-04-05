@@ -12,7 +12,7 @@ const translations: Record<Language, TranslationDict> = {
   en: {
     'app.title': 'Lost & Found Board',
     'nav.items': 'Items',
-    'nav.report': 'Report Item',
+    'nav.report': 'Create Report',
     'nav.myReports': 'My Reports',
     'nav.profile': 'Profile',
     'nav.moderation': 'Moderation',
@@ -173,8 +173,8 @@ const translations: Record<Language, TranslationDict> = {
     'admin.accessDenied': 'Access denied for',
 
     'reports.profileOnly': 'Manage Telegram connection in Profile.',
-    'new.profileRequiredTitle': 'Telegram linking moved to Profile',
-    'new.profileRequiredSubtitle': 'To create reports with secure ownership, connect Telegram in your Profile page.',
+    'new.profileRequiredTitle': 'Link Telegram in Profile',
+    'new.profileRequiredSubtitle': 'To create a report, go to Profile and register/link your Telegram account.',
     'new.profileHintTitle': 'Profile preferences help you fill faster',
     'new.profileHintSubtitle': 'Set display name, contact preference, and pickup location in Profile for quicker report creation.',
     'new.goProfile': 'Go to Profile',
@@ -221,7 +221,7 @@ const translations: Record<Language, TranslationDict> = {
   ru: {
     'app.title': 'Бюро находок',
     'nav.items': 'Объявления',
-    'nav.report': 'Сообщить о вещи',
+    'nav.report': 'Создать объявление',
     'nav.myReports': 'Мои объявления',
     'nav.profile': 'Профиль',
     'nav.moderation': 'Модерация',
@@ -382,8 +382,8 @@ const translations: Record<Language, TranslationDict> = {
     'admin.accessDenied': 'Доступ запрещён для',
 
     'reports.profileOnly': 'Управляйте подключением Telegram только в Профиле.',
-    'new.profileRequiredTitle': 'Привязка Telegram перенесена в Профиль',
-    'new.profileRequiredSubtitle': 'Чтобы создавать объявления с защищённым владением, подключите Telegram на странице Профиля.',
+    'new.profileRequiredTitle': 'Подключите Telegram в Профиле',
+    'new.profileRequiredSubtitle': 'Чтобы создать объявление, перейдите в Профиль и зарегистрируйте/привяжите Telegram.',
     'new.profileHintTitle': 'Профиль помогает заполнять быстрее',
     'new.profileHintSubtitle': 'Укажите имя, контакты и обычное место в Профиле для быстрого создания объявлений.',
     'new.goProfile': 'Открыть Профиль',

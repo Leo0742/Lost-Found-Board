@@ -215,6 +215,7 @@ export const ProfilePage = () => {
   const [linked, setLinked] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [linkCode, setLinkCode] = useState<string | null>(null)
+  const [linkState, setLinkState] = useState<'idle' | 'waiting' | 'linked' | 'error'>('idle')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -240,6 +241,20 @@ export const ProfilePage = () => {
   const [addressLon, setAddressLon] = useState<number | null>(null)
   const suggestions = useYandexSuggest(addressText)
   const [copiedLinkCommand, setCopiedLinkCommand] = useState(false)
+  const linkPollIntervalRef = useRef<number | null>(null)
+  const linkPollTimeoutRef = useRef<number | null>(null)
+  const linkPollSessionRef = useRef(0)
+
+  const stopLinkPolling = () => {
+    if (linkPollIntervalRef.current) {
+      window.clearInterval(linkPollIntervalRef.current)
+      linkPollIntervalRef.current = null
+    }
+    if (linkPollTimeoutRef.current) {
+      window.clearTimeout(linkPollTimeoutRef.current)
+      linkPollTimeoutRef.current = null
+    }
+  }
 
   const applyProfile = (next: UserProfile) => {
     setProfile(next)
@@ -258,6 +273,7 @@ export const ProfilePage = () => {
     try {
       const me = await getAuthMe({ forceRefresh: true })
       setLinked(me.linked)
+      setLinkState(me.linked ? 'linked' : 'idle')
       if (!me.linked) {
         setProfile(null)
         return
@@ -270,7 +286,59 @@ export const ProfilePage = () => {
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void load()
+    return () => stopLinkPolling()
+  }, [])
+
+  const refreshLinkStatus = async (options?: { clearWaiting?: boolean }) => {
+    const me = await getAuthMe({ forceRefresh: true })
+    setLinked(me.linked)
+    if (!me.linked) {
+      if (options?.clearWaiting) setLinkState('idle')
+      return false
+    }
+    const nextProfile = await fetchMyProfile({ bypassCache: true })
+    applyProfile(nextProfile)
+    setLinkState('linked')
+    setLinkCode(null)
+    setCopiedLinkCommand(false)
+    setMessage('Telegram linked successfully.')
+    return true
+  }
+
+  const startLinkPolling = () => {
+    stopLinkPolling()
+    linkPollSessionRef.current += 1
+    const sessionId = linkPollSessionRef.current
+    setLinkState('waiting')
+    setError(null)
+    const poll = async () => {
+      try {
+        const me = await getAuthMe({ forceRefresh: true })
+        if (sessionId !== linkPollSessionRef.current) return
+        if (!me.linked) return
+        const nextProfile = await fetchMyProfile({ bypassCache: true })
+        if (sessionId !== linkPollSessionRef.current) return
+        applyProfile(nextProfile)
+        setLinked(true)
+        setLinkState('linked')
+        setLinkCode(null)
+        setCopiedLinkCommand(false)
+        setMessage('Telegram linked successfully.')
+        stopLinkPolling()
+      } catch {
+        if (sessionId !== linkPollSessionRef.current) return
+      }
+    }
+    void poll()
+    linkPollIntervalRef.current = window.setInterval(() => { void poll() }, 2500)
+    linkPollTimeoutRef.current = window.setTimeout(() => {
+      if (sessionId !== linkPollSessionRef.current) return
+      stopLinkPolling()
+      setLinkState('idle')
+    }, 4 * 60 * 1000)
+  }
 
   const allMethods = useMemo(() => {
     const telegram = profile?.telegram_username
@@ -353,7 +421,14 @@ export const ProfilePage = () => {
                 </div>
               </div>
               <div className="profile-identity-actions">
-                <button className="button-neutral button-sm profile-unlink-icon-button" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
+                <button className="button-neutral button-sm profile-unlink-icon-button" type="button" onClick={async () => {
+                  await unlinkTelegram()
+                  stopLinkPolling()
+                  linkPollSessionRef.current += 1
+                  await load()
+                  setLinkCode(null)
+                  setCopiedLinkCommand(false)
+                }}>{t('profile.unlink')}</button>
               </div>
             </div>
 
@@ -485,9 +560,19 @@ export const ProfilePage = () => {
         <SectionCard title={t('profile.telegram')}>
           <div className="stack compact-stack">
             <button type="button" className="button-sm" onClick={async () => {
-              const generated = await generateLinkCode()
-              setLinkCode(generated.code)
-              setCopiedLinkCommand(false)
+              try {
+                setError(null)
+                setMessage(null)
+                stopLinkPolling()
+                linkPollSessionRef.current += 1
+                const generated = await generateLinkCode()
+                setLinkCode(generated.code)
+                setCopiedLinkCommand(false)
+                startLinkPolling()
+              } catch {
+                setLinkState('error')
+                setError('Unable to generate a Telegram linking code. Please try again.')
+              }
             }}>{t('profile.generateCopy')}</button>
             {linkCommand ? (
               <div className="profile-link-code">
@@ -509,6 +594,25 @@ export const ProfilePage = () => {
                 </button>
               </div>
             ) : null}
+            {linkCommand ? (
+              <button
+                type="button"
+                className="button-neutral button-sm"
+                onClick={async () => {
+                  setError(null)
+                  try {
+                    const nowLinked = await refreshLinkStatus({ clearWaiting: true })
+                    if (!nowLinked) setMessage('Not linked yet. Confirm /link CODE in Telegram and try again.')
+                  } catch {
+                    setLinkState('error')
+                    setError('Could not refresh Telegram link status.')
+                  }
+                }}
+              >
+                Check Telegram link status
+              </button>
+            ) : null}
+            {linkState === 'waiting' ? <p className="subtle">Waiting for Telegram confirmation…</p> : null}
           </div>
           <EmptyState title={t('profile.linkToEditTitle')} subtitle={t('profile.linkToEditSub')} action={<Link to="/"><button type="button" className="button-neutral">{t('nav.items')}</button></Link>} />
         </SectionCard>
