@@ -11,6 +11,7 @@ from app.core.auth import (
     get_admin_role_for_identity,
     get_admin_role_for_session,
     get_session_from_cookie,
+    link_telegram_to_existing_session,
     rotate_web_session,
     require_csrf_for_session,
 )
@@ -139,7 +140,7 @@ def create_link_code(
 
 
 @router.post("/link/confirm", response_model=WhoAmIResponse)
-def confirm_link(payload: LinkConfirmRequest, response: Response, request: Request, db: Session = Depends(get_db)) -> WhoAmIResponse:
+def confirm_link(payload: LinkConfirmRequest, request: Request, db: Session = Depends(get_db)) -> WhoAmIResponse:
     settings = get_settings()
     enforce_rate_limit(
         db,
@@ -158,14 +159,13 @@ def confirm_link(payload: LinkConfirmRequest, response: Response, request: Reque
     if not session or not session.link_code_expires_at or _as_utc(session.link_code_expires_at) < _now():
         raise HTTPException(status_code=404, detail="Link code is invalid or expired")
 
-    linked_session = rotate_web_session(
+    linked_session = link_telegram_to_existing_session(
         db,
         session,
         telegram_user_id=payload.telegram_user_id,
         telegram_username=payload.telegram_username,
         telegram_display_name=payload.display_name,
     )
-    _set_session_cookie(response, linked_session.id)
     log_event(
         db,
         "telegram_linked",
