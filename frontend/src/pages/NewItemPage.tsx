@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { createItem, uploadItemImage, getAuthMe, generateLinkCode, fetchCategories, suggestCategory } from '../api/items'
 import { ItemStatus } from '../types/item'
 import { EmptyState, PageHero, SectionCard } from '../components/ui'
+import { useSettings } from '../context/SettingsContext'
 
 const formatBackendValidationError = (error: unknown): string => {
   if (!axios.isAxiosError(error)) return 'Could not create item. Please review the form.'
@@ -16,6 +17,7 @@ const formatBackendValidationError = (error: unknown): string => {
 }
 
 export const NewItemPage = () => {
+  const { t } = useSettings()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('Accessories')
@@ -52,11 +54,11 @@ export const NewItemPage = () => {
   }, [])
 
   useEffect(() => {
-    refreshAuthState().catch(() => setError('Could not initialize auth session.'))
+    refreshAuthState().catch(() => setError(t('new.authInitFailed')))
     fetchCategories().then((data) => {
       if (data.length > 0) setCategories(data)
     }).catch(() => setCategories(['Other']))
-  }, [refreshAuthState])
+  }, [refreshAuthState, t])
 
   useEffect(() => {
     if (!linkCode || linkedUserId) return
@@ -94,7 +96,7 @@ export const NewItemPage = () => {
     event.preventDefault()
     setError('')
     setSuccess('')
-    if (!linkedUserId) return setError('Connect Telegram first so ownership is server-side and synced with bot.')
+    if (!linkedUserId) return setError(t('new.connectFirst'))
     try {
       const item = await createItem({
         title: title.trim(),
@@ -104,9 +106,9 @@ export const NewItemPage = () => {
         status,
         contact_name: contactName.trim(),
         telegram_username: telegramUsername.trim() || undefined,
-        ...(photoFile ? await uploadItemImage(photoFile) : {})
+        ...(photoFile ? await uploadItemImage(photoFile) : {}),
       })
-      setSuccess('Report created successfully. Redirecting...')
+      setSuccess(t('new.created'))
       setTimeout(() => navigate(`/items/${item.id}`), 450)
     } catch (err) {
       setError(formatBackendValidationError(err))
@@ -116,33 +118,33 @@ export const NewItemPage = () => {
   return (
     <section className="stack">
       <PageHero
-        title="Create a high-quality report"
-        subtitle="Structured entry improves smart matching, moderation trust, and claim success rates."
-        stats={[{ label: 'Completion', value: `${completionScore}%` }, { label: 'Ownership', value: linkedUserId ? 'Linked' : 'Not linked' }]}
+        title={t('new.hero.title')}
+        subtitle={t('new.hero.subtitle')}
+        stats={[{ label: t('new.stats.completion'), value: `${completionScore}%` }, { label: t('new.stats.ownership'), value: linkedUserId ? t('new.linked') : t('new.notLinked') }]}
       />
 
       <div className="layout-split">
-        <SectionCard title="Report form" subtitle="Complete each block for the best match confidence.">
+        <SectionCard title={t('new.form.title')} subtitle={t('new.form.subtitle')}>
           <form className="form stack" onSubmit={onSubmit}>
-            <label>Report type<select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}><option value="lost">Lost item</option><option value="found">Found item</option></select></label>
-            <label>Title<input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+            <label>{t('new.reportType')}<select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}><option value="lost">{t('board.status.lost')}</option><option value="found">{t('board.status.found')}</option></select></label>
+            <label>{t('new.title')}<input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
             <label>
-              Category
+              {t('board.filter.category')}
               <select value={category} onChange={(e) => setCategory(e.target.value)}>
                 {categories.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
             </label>
             {categoryHint && categoryHint.category !== 'Other' ? (
               <p className="notice">
-                Suggested category from title: <strong>{categoryHint.category}</strong> ({Math.round(categoryHint.confidence * 100)}%)
-                {' '}<button type="button" className="button-ghost" onClick={() => setCategory(categoryHint.category)}>Use suggestion</button>
+                {t('new.suggested')}: <strong>{categoryHint.category}</strong> ({Math.round(categoryHint.confidence * 100)}%)
+                {' '}<button type="button" className="button-ghost" onClick={() => setCategory(categoryHint.category)}>{t('new.useSuggestion')}</button>
               </p>
             ) : null}
-            <label>Location<input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
-            <label>Description<textarea required minLength={5} maxLength={2000} rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-            <label>Contact name<input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} /></label>
-            <label>Telegram username (optional)<input maxLength={80} value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" /></label>
-            <label>Photo (optional)
+            <label>{t('board.filter.location')}<input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
+            <label>{t('new.description')}<textarea required minLength={5} maxLength={2000} rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+            <label>{t('new.contactName')}<input required minLength={2} maxLength={80} value={contactName} onChange={(e) => setContactName(e.target.value)} /></label>
+            <label>{t('new.telegramOptional')}<input maxLength={80} value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" /></label>
+            <label>{t('new.photoOptional')}
               <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => {
                 const file = e.target.files?.[0] || null
                 setPhotoFile(file)
@@ -150,41 +152,41 @@ export const NewItemPage = () => {
                 const reader = new FileReader(); reader.onload = () => setPhotoPreview(String(reader.result)); reader.readAsDataURL(file)
               }} />
             </label>
-            {photoPreview ? <img src={photoPreview} alt="Selected preview" className="detail-image" /> : null}
+            {photoPreview ? <img src={photoPreview} alt={t('new.previewAlt')} className="detail-image" /> : null}
             {error ? <p className="notice error">{error}</p> : null}
             {success ? <p className="notice success">{success}</p> : null}
-            <div className="actions-row"><button type="submit" disabled={!linkedUserId}>Create report</button><button className="button-neutral" type="button" onClick={() => navigate('/')}>Cancel</button></div>
+            <div className="actions-row"><button type="submit" disabled={!linkedUserId}>{t('new.create')}</button><button className="button-neutral" type="button" onClick={() => navigate('/')}>{t('common.cancel')}</button></div>
           </form>
         </SectionCard>
 
         <div className="stack sticky-side">
-          <SectionCard title="Submission checklist" subtitle="Aim for high confidence matching.">
+          <SectionCard title={t('new.checklist.title')} subtitle={t('new.checklist.subtitle')}>
             <div className="timeline-list">
-              <div className="timeline-item">Clear title and category</div>
-              <div className="timeline-item">Exact location context</div>
-              <div className="timeline-item">Distinctive description details</div>
-              <div className="timeline-item">Photo for visual verification</div>
+              <div className="timeline-item">{t('new.checklist.1')}</div>
+              <div className="timeline-item">{t('new.checklist.2')}</div>
+              <div className="timeline-item">{t('new.checklist.3')}</div>
+              <div className="timeline-item">{t('new.checklist.4')}</div>
             </div>
           </SectionCard>
 
           {!linkedUserId ? (
-            <SectionCard title="Link Telegram" subtitle="Required for secure ownership and synced bot actions.">
-              <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>Generate secure link code</button>
-              {linkCode ? <p className="notice">Send this in Telegram: <strong>/link {linkCode}</strong></p> : null}
+            <SectionCard title={t('new.linkTelegram.title')} subtitle={t('new.linkTelegram.subtitle')}>
+              <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('new.linkTelegram.generate')}</button>
+              {linkCode ? <p className="notice">{t('reports.connect.send')} <strong>/link {linkCode}</strong></p> : null}
               {linkCode ? (
                 <div className="actions-row">
                   <button
                     type="button"
                     className="button-neutral"
                     disabled={isCheckingLink}
-                    onClick={() => refreshAuthState({ forceRefresh: true }).catch(() => setError('Could not refresh link status.'))}
+                    onClick={() => refreshAuthState({ forceRefresh: true }).catch(() => setError(t('new.linkTelegram.refreshFailed')))}
                   >
-                    {isCheckingLink ? 'Checking…' : 'I linked my Telegram'}
+                    {isCheckingLink ? t('common.loading') : t('new.linkTelegram.done')}
                   </button>
                 </div>
               ) : null}
             </SectionCard>
-          ) : <EmptyState title="Telegram linked" subtitle="You can submit and manage this report across web and bot." />}
+          ) : <EmptyState title={t('new.telegramLinked')} subtitle={t('new.telegramLinkedSub')} />}
         </div>
       </div>
     </section>

@@ -5,6 +5,7 @@ import { AdminFiltersPanel } from '../components/admin/AdminFiltersPanel'
 import { AllReportsSection } from '../components/admin/AllReportsSection'
 import { AuditFeedSection } from '../components/admin/AuditFeedSection'
 import { FlaggedQueueSection, PendingQueueSection } from '../components/admin/AdminQueueSections'
+import { useSettings } from '../context/SettingsContext'
 import { QueuePresetControls } from '../components/admin/QueuePresetControls'
 import {
   bulkLifecycleAction,
@@ -17,6 +18,7 @@ import {
 } from '../hooks/useAdminDashboard'
 
 export const AdminPage = () => {
+  const { t } = useSettings()
   const [authLoading, setAuthLoading] = useState(true)
   const [linked, setLinked] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -79,7 +81,7 @@ export const AdminPage = () => {
           await refreshAll()
         }
       } catch {
-        setActionMessage('Could not verify admin access.')
+        setActionMessage(t('admin.verifyFailed'))
       } finally {
         setAuthLoading(false)
       }
@@ -117,20 +119,20 @@ export const AdminPage = () => {
   return (
     <section className="stack">
       <PageHero
-        title="Operations moderation console"
-        subtitle="Queue-first review with abuse signals, fast filters, and audit traceability."
+        title={t('admin.title')}
+        subtitle={t('admin.subtitle')}
         stats={[
-          { label: 'Pending', value: stats?.pending ?? summary.pending },
-          { label: 'Flagged', value: stats?.flagged ?? summary.flagged },
-          { label: 'Approved', value: queueSummary?.approved_total ?? summary.approved },
-          { label: 'Rejected', value: queueSummary?.rejected_total ?? summary.rejected },
-          { label: 'Abuse blocks 24h', value: observability?.recent_abuse_blocks_24h ?? stats?.recent_abuse_blocks_24h ?? 0 },
+          { label: t('admin.stats.pending'), value: stats?.pending ?? summary.pending },
+          { label: t('admin.stats.flagged'), value: stats?.flagged ?? summary.flagged },
+          { label: t('admin.stats.approved'), value: queueSummary?.approved_total ?? summary.approved },
+          { label: t('admin.stats.rejected'), value: queueSummary?.rejected_total ?? summary.rejected },
+          { label: t('admin.stats.abuse'), value: observability?.recent_abuse_blocks_24h ?? stats?.recent_abuse_blocks_24h ?? 0 },
         ]}
       />
 
       {authLoading ? <LoadingGrid count={3} /> : null}
       {actionMessage ? <p className="notice">{actionMessage}</p> : null}
-      {actionWarning ? <p className="notice">Partial warning: {actionWarning}</p> : null}
+      {actionWarning ? <p className="notice">{t('admin.partialWarning')}: {actionWarning}</p> : null}
       {itemError ? <p className="notice error">{itemError}</p> : null}
       {signalError ? <p className="notice">{signalError}</p> : null}
       {auditError ? <p className="notice error">{auditError}</p> : null}
@@ -139,13 +141,13 @@ export const AdminPage = () => {
       {observabilityError ? <p className="notice error">{observabilityError}</p> : null}
 
       {!authLoading && !linked ? (
-        <SectionCard title="Connect Telegram first" subtitle="Admin roles are bound to Telegram-linked identity.">
-          <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>Generate link code</button>
-          {linkCode ? <p className="notice">Send this to bot: <strong>/link {linkCode}</strong></p> : null}
+        <SectionCard title={t('admin.connectFirst')} subtitle={t('admin.connectSub')}>
+          <button type="button" onClick={async () => setLinkCode((await generateLinkCode()).code)}>{t('reports.connect.generate')}</button>
+          {linkCode ? <p className="notice">{t('admin.sendBot')} <strong>/link {linkCode}</strong></p> : null}
         </SectionCard>
       ) : null}
 
-      {!authLoading && linked && !isAdmin ? <p className="notice error">Access denied for {linkedUsername ? `@${linkedUsername}` : linkedUserId}.</p> : null}
+      {!authLoading && linked && !isAdmin ? <p className="notice error">{t('admin.accessDenied')} {linkedUsername ? `@${linkedUsername}` : linkedUserId}.</p> : null}
 
       {!authLoading && linked && isAdmin ? (
         <>

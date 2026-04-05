@@ -8,9 +8,11 @@ import { ItemDetailsPage } from './pages/ItemDetailsPage'
 import { MyReportsPage } from './pages/MyReportsPage'
 import { AdminPage } from './pages/AdminPage'
 import './styles/main.css'
+import { SettingsProvider } from './context/SettingsContext'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <SettingsProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
@@ -23,5 +25,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </Route>
       </Routes>
     </BrowserRouter>
+    </SettingsProvider>
   </React.StrictMode>
 )
