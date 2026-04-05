@@ -636,3 +636,27 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
   gap: .65rem;
   flex-wrap: wrap;
 }
+
+.profile-link-code.compact {
+  justify-content: flex-start;
+}
+
+.compact-stack {
+  gap: .5rem;
+}
+
+.profile-link-command {
+  display: inline-block;
+  padding: .3rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.profile-linked-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}

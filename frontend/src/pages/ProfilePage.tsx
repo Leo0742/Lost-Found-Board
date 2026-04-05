@@ -11,6 +11,21 @@ const initialsFrom = (name?: string | null, fallback = 'U') => {
   return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join('')
 }
 
+const normalizeAvatarUrl = (value?: string | null) => {
+  if (!value) return null
+  if (value.startsWith('/media/')) return value
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value)
+      if (parsed.pathname.startsWith('/media/')) return parsed.pathname
+      return value
+    } catch {
+      return value
+    }
+  }
+  return `/media/${value.replace(/^\/+/, '')}`
+}
+
 export const ProfilePage = () => {
   const { t, language, theme } = useSettings()
   const [loading, setLoading] = useState(true)
@@ -107,7 +122,8 @@ export const ProfilePage = () => {
     () => initialsFrom(displayName || profile?.telegram_display_name || profile?.telegram_username || undefined),
     [displayName, profile?.telegram_display_name, profile?.telegram_username],
   )
-  const shownAvatarUrl = profile?.telegram_avatar_url || profile?.avatar_url
+  const shownAvatarUrl = normalizeAvatarUrl(profile?.telegram_avatar_url || profile?.avatar_url)
+  const linkCommand = linkCode ? `/link ${linkCode}` : null
 
   return (
     <section className="stack">
@@ -143,25 +159,30 @@ export const ProfilePage = () => {
             </div>
           </SectionCard>
 
-          <SectionCard title={t('profile.telegram')} subtitle={t('profile.telegramSub')}>
+          <SectionCard title={t('profile.telegram')}>
             {!linked ? (
-              <div className="stack">
-                <p className="subtle">{t('profile.telegramUnlinked')}</p>
-                <button type="button" onClick={async () => {
-                  const generated = await generateLinkCode()
-                  setLinkCode(generated.code)
-                  setCopied(false)
-                  setMessage(null)
-                }}>{t('profile.generateCode')}</button>
-                {linkCode ? (
-                  <div className="notice profile-link-code">
-                    <span>{t('profile.sendCode')} <strong>/link {linkCode}</strong></span>
+              <div className="stack compact-stack">
+                <div className="profile-link-code compact">
+                  <button type="button" onClick={async () => {
+                    const generated = await generateLinkCode()
+                    const command = `/link ${generated.code}`
+                    setLinkCode(generated.code)
+                    setCopied(false)
+                    setMessage(null)
+                    try {
+                      await navigator.clipboard.writeText(command)
+                      setCopied(true)
+                    } catch {
+                      // keep command visible for manual copy
+                    }
+                  }}>{t('profile.generateCopy')}</button>
+                  {linkCommand ? (
                     <button
                       type="button"
                       className="button-neutral"
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(`/link ${linkCode}`)
+                          await navigator.clipboard.writeText(linkCommand)
                           setError(null)
                           setCopied(true)
                         } catch {
@@ -171,13 +192,17 @@ export const ProfilePage = () => {
                     >
                       {copied ? t('profile.copied') : t('profile.copyCommand')}
                     </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
+                {linkCommand ? <code className="profile-link-command">{linkCommand}</code> : null}
+                {linkCommand ? <span className="subtle">{t('profile.waitingForLink')}</span> : null}
               </div>
             ) : (
-              <div className="stack">
-                <p className="subtle">{t('profile.telegramLinked')}</p>
-                <p className="subtle">{profile?.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</p>
+              <div className="stack compact-stack">
+                <div className="profile-linked-row">
+                  <span className={`badge ${linked ? 'approved' : 'pending'}`}>{linked ? t('profile.linked') : t('profile.unlinked')}</span>
+                  <span className="subtle">{profile?.telegram_username ? `@${String(profile.telegram_username).replace(/^@/, '')}` : t('profile.noUsername')}</span>
+                </div>
                 <button className="button-danger" type="button" onClick={async () => { await unlinkTelegram(); await load() }}>{t('profile.unlink')}</button>
               </div>
             )}

@@ -601,7 +601,8 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
         avatar_bytes = await _fetch_telegram_avatar_bytes(message.bot, message.from_user.id)
         if avatar_bytes:
             uploaded = await api.upload_item_image(avatar_bytes, filename=f"telegram_{message.from_user.id}.jpg", mime_type="image/jpeg")
-            telegram_avatar_url = uploaded.get("image_url") or uploaded.get("image_path")
+            image_path = uploaded.get("image_path")
+            telegram_avatar_url = f"/media/{str(image_path).lstrip('/')}" if image_path else uploaded.get("image_url")
         await api.sync_telegram_profile(
             telegram_user_id=message.from_user.id,
             telegram_username=message.from_user.username,
