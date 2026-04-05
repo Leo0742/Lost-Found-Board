@@ -382,3 +382,9 @@ export const claimAction = async (claimId: number, action: 'approve' | 'reject' 
   invalidateCache('claims:')
   return response.data
 }
+
+export const shareClaimLiveLocation = async (claimId: number, payload: { latitude: number; longitude: number; address_text?: string; ttl_minutes?: number }) => {
+  const response = await apiClient.post(`/items/claim-requests/${claimId}/share-live-location`, payload)
+  invalidateCache('claims:')
+  return response.data
+}

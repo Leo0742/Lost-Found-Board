@@ -111,3 +111,8 @@ def exposed_address_summary(profile: UserProfile) -> str | None:
     if not exposed:
         return None
     return " | ".join(f"{row.get('label')}: {row.get('address_text')}" for row in exposed)[:255]
+
+
+def primary_exposed_profile_address(profile: UserProfile) -> dict[str, Any] | None:
+    exposed = exposed_profile_addresses(profile)
+    return exposed[0] if exposed else None

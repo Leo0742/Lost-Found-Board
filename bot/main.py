@@ -2,6 +2,7 @@ import sys
 import logging
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from aiogram import Bot, Dispatcher, F
@@ -137,6 +138,31 @@ STEP_META = {
 }
 
 CATEGORY_PAGE_SIZE = 9
+
+
+def _yandex_maps_route_url(latitude: float | None = None, longitude: float | None = None, address_text: str | None = None) -> str | None:
+    if latitude is not None and longitude is not None:
+        return f"https://yandex.com/maps/?rtext=~{latitude},{longitude}&rtt=auto"
+    text = (address_text or "").strip()
+    if not text:
+        return None
+    return f"https://yandex.com/maps/?text={quote(text)}&rtt=auto"
+
+
+def _claim_route_keyboard(claim: dict) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    source_route = claim.get("shared_source_route_url")
+    target_route = claim.get("shared_target_route_url")
+    live_location = claim.get("shared_live_location") if isinstance(claim.get("shared_live_location"), dict) else None
+    live_route = live_location.get("route_url") if live_location else None
+    if source_route:
+        rows.append([InlineKeyboardButton(text="🧭 Route to source", url=str(source_route))])
+    if target_route:
+        rows.append([InlineKeyboardButton(text="🧭 Route to target", url=str(target_route))])
+    if live_route:
+        rows.append([InlineKeyboardButton(text="📍 Open live meetup", url=str(live_route))])
+    rows.append([InlineKeyboardButton(text="📌 Share my current location", callback_data=f"claim:shareloc:{claim.get('id')}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _review_keyboard() -> InlineKeyboardMarkup:
@@ -581,7 +607,10 @@ async def cmd_claims(message: Message) -> None:
                 f"• Source: {claim.get('shared_source_contact') or '-'}\n"
                 f"• Target: {claim.get('shared_target_contact') or '-'}\n"
             )
-        await message.answer(text, reply_markup=MAIN_KEYBOARD)
+        live_location = claim.get("shared_live_location") if isinstance(claim.get("shared_live_location"), dict) else None
+        if live_location:
+            text += f"\nLive meetup until: {str(live_location.get('expires_at') or '')[:19]}"
+        await message.answer(text, reply_markup=_claim_route_keyboard(claim))
 
 
 @dp.message(Command("link"))
@@ -1084,7 +1113,7 @@ async def my_item_action(callback: CallbackQuery) -> None:
 
 
 @dp.callback_query(F.data.startswith("claim:"))
-async def claim_action(callback: CallbackQuery) -> None:
+async def claim_action(callback: CallbackQuery, state: FSMContext) -> None:
     parts = callback.data.split(":")
     action = parts[1]
     user_id = callback.from_user.id
@@ -1115,7 +1144,10 @@ async def claim_action(callback: CallbackQuery) -> None:
         elif action in {"approve", "reject", "complete"}:
             claim_id = int(parts[2])
             claim = await api.claim_action(claim_id, action, user_id)
-            await callback.message.answer(f"Claim #{claim['id']} updated: {claim['status'].upper()}.", reply_markup=MAIN_KEYBOARD)
+            await callback.message.answer(
+                f"Claim #{claim['id']} updated: {claim['status'].upper()}.",
+                reply_markup=_claim_route_keyboard(claim),
+            )
             other_id = (
                 claim.get("requester_telegram_user_id")
                 if claim.get("owner_telegram_user_id") == user_id
@@ -1130,12 +1162,43 @@ async def claim_action(callback: CallbackQuery) -> None:
                         f"• Target: {claim.get('shared_target_contact') or '-'}"
                     )
                 try:
-                    await callback.bot.send_message(int(other_id), text, reply_markup=MAIN_KEYBOARD)
+                    await callback.bot.send_message(int(other_id), text, reply_markup=_claim_route_keyboard(claim))
                 except Exception:
                     pass
+        elif action == "shareloc":
+            claim_id = int(parts[2])
+            await state.update_data(live_share_claim_id=claim_id)
+            await callback.message.answer(
+                "Send your Telegram location now. It will be shared as temporary meetup point for 2 hours.",
+                reply_markup=MAIN_KEYBOARD,
+            )
     except httpx.HTTPError:
         await callback.message.answer("Claim action failed. Please try again.", reply_markup=MAIN_KEYBOARD)
     await callback.answer()
+
+
+@dp.message(StateFilter(None), F.location)
+async def handle_live_location_share(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    claim_id = data.get("live_share_claim_id")
+    if not claim_id or not message.location or not message.from_user:
+        await message.answer("Location received.", reply_markup=MAIN_KEYBOARD)
+        return
+    try:
+        claim = await api.share_claim_live_location(
+            claim_id=int(claim_id),
+            telegram_user_id=message.from_user.id,
+            latitude=message.location.latitude,
+            longitude=message.location.longitude,
+            ttl_minutes=120,
+        )
+        await state.update_data(live_share_claim_id=None)
+        await message.answer(
+            f"✅ Live meetup location shared for claim #{claim['id']} (expires in 2h).",
+            reply_markup=_claim_route_keyboard(claim),
+        )
+    except httpx.HTTPError:
+        await message.answer("Could not share live location right now.", reply_markup=MAIN_KEYBOARD)
 
 
 @dp.message(F.text)
