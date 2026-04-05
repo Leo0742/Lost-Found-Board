@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getAuthMe } from '../api/items'
-import { EmptyState, LoadingGrid, PageHero, SectionCard } from '../components/ui'
+import { EmptyState, LoadingGrid, SectionCard } from '../components/ui'
 import { AdminFiltersPanel } from '../components/admin/AdminFiltersPanel'
 import { AllReportsSection } from '../components/admin/AllReportsSection'
 import { AuditFeedSection } from '../components/admin/AuditFeedSection'
@@ -60,6 +60,7 @@ export const AdminPage = () => {
     loadAudit,
     refreshAll,
     applyPreset,
+    activePreset,
     runSingleItemAction,
     runBulkAction,
     summary,
@@ -88,6 +89,10 @@ export const AdminPage = () => {
     }
     void load()
   }, [refreshAll, setActionMessage])
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => items.some((item) => item.id === id)))
+  }, [items])
 
   const maintenanceRows = Object.entries(observability?.cleanup?.maintenance_status ?? {})
   const maintenanceHealthSummary = maintenanceRows
@@ -118,18 +123,6 @@ export const AdminPage = () => {
 
   return (
     <section className="stack">
-      <PageHero
-        title={t('admin.title')}
-        subtitle={t('admin.subtitle')}
-        stats={[
-          { label: t('admin.stats.pending'), value: stats?.pending ?? summary.pending },
-          { label: t('admin.stats.flagged'), value: stats?.flagged ?? summary.flagged },
-          { label: t('admin.stats.approved'), value: queueSummary?.approved_total ?? summary.approved },
-          { label: t('admin.stats.rejected'), value: queueSummary?.rejected_total ?? summary.rejected },
-          { label: t('admin.stats.abuse'), value: observability?.recent_abuse_blocks_24h ?? stats?.recent_abuse_blocks_24h ?? 0 },
-        ]}
-      />
-
       {authLoading ? <LoadingGrid count={3} /> : null}
       {actionMessage ? <p className="notice">{actionMessage}</p> : null}
       {actionWarning ? <p className="notice">{t('admin.partialWarning')}: {actionWarning}</p> : null}
@@ -151,7 +144,13 @@ export const AdminPage = () => {
       {!authLoading && linked && isAdmin ? (
         <>
           <SectionCard title="Quick moderation queues" subtitle={`Role: ${role || 'none'}. Use presets for fast triage.`}>
-            <QueuePresetControls onApply={(preset) => void applyPreset(preset)} />
+            <QueuePresetControls
+              activePreset={activePreset}
+              onApply={(preset) => {
+                setSelectedIds([])
+                void applyPreset(preset)
+              }}
+            />
             <p className="subtle">High-risk flagged (24h): {queueSummary?.high_risk_flagged_24h ?? 0} · Stale pending (48h): {queueSummary?.stale_pending_48h ?? 0} {loadingStats ? '· Updating summary…' : ''}</p>
           </SectionCard>
 

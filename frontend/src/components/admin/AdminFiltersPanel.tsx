@@ -7,7 +7,7 @@ type Props = {
 }
 
 export const AdminFiltersPanel = ({ filters, onChange, onSubmit }: Props) => {
-  const patch = (key: keyof ItemFilters, value: string | number) => onChange({ ...filters, [key]: value })
+  const patch = (key: keyof ItemFilters, value: string | number | boolean) => onChange({ ...filters, [key]: value })
 
   return (
     <form className="filters" onSubmit={(e) => { e.preventDefault(); onSubmit() }}>
@@ -22,7 +22,8 @@ export const AdminFiltersPanel = ({ filters, onChange, onSubmit }: Props) => {
       <label>Created to<input type="datetime-local" value={filters.createdTo} onChange={(e) => patch('createdTo', e.target.value)} /></label>
       <label>Sort<select value={filters.sortBy} onChange={(e) => patch('sortBy', e.target.value)}><option value="created_at">Created</option><option value="updated_at">Updated</option><option value="moderated_at">Moderated</option><option value="id">ID</option></select></label>
       <label>Order<select value={filters.sortOrder} onChange={(e) => patch('sortOrder', e.target.value)}><option value="desc">Desc</option><option value="asc">Asc</option></select></label>
-      <label>Page size<select value={filters.limit} onChange={(e) => patch('limit', e.target.value)}><option value={50}>50</option><option value={100}>100</option><option value={150}>150</option></select></label>
+      <label>Page size<select value={filters.limit} onChange={(e) => patch('limit', Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={150}>150</option></select></label>
+      <label>Suspicious only<select value={filters.suspiciousOnly ? 'yes' : 'no'} onChange={(e) => patch('suspiciousOnly', e.target.value === 'yes')}><option value="no">No</option><option value="yes">Yes</option></select></label>
       <button type="submit">Load queue</button>
     </form>
   )

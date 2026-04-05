@@ -346,6 +346,9 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .reports-tab.active span { background: rgba(255, 255, 255, 0.24); color: #fff; }
 .claim-feed { display: grid; gap: .85rem; }
 .quick-actions { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: .75rem; }
+.quick-actions .preset-active {
+  box-shadow: 0 0 0 2px rgba(53, 92, 255, 0.35), 0 10px 18px rgba(53, 92, 255, 0.28);
+}
 .quick-action-card { padding: .85rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
 .timeline-list { display: grid; gap: .7rem; }
 .timeline-item { border-left: 3px solid #cbd8f6; padding-left: .8rem; }
