@@ -370,10 +370,12 @@ class ItemService:
     def moderate_item(self, item: Item, action: str, moderator: str, reason: str | None = None) -> Item:
         mapping = {
             "approve": ModerationStatus.APPROVED,
-            "reject": ModerationStatus.REJECTED,
+            "reject": ModerationStatus.FLAGGED,
             "flag": ModerationStatus.FLAGGED,
             "unflag": ModerationStatus.APPROVED,
         }
+        if action not in mapping:
+            raise HTTPException(status_code=400, detail="Unsupported moderation action")
         item.moderation_status = mapping[action]
         item.moderation_reason = reason
         item.moderated_by = moderator

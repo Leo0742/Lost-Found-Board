@@ -2,8 +2,6 @@ import { QueuePreset } from '../../hooks/useAdminDashboard'
 
 const presetButtons: Array<{ preset: QueuePreset; label: string }> = [
   { preset: 'flagged', label: 'Flagged priority' },
-  { preset: 'pending', label: 'Pending intake' },
-  { preset: 'recent', label: 'Recent activity' },
   { preset: 'suspicious', label: 'Suspicious focus' },
 ]
 

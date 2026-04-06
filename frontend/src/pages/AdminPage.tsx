@@ -11,10 +11,8 @@ import { QueuePresetControls } from '../components/admin/QueuePresetControls'
 import {
   bulkLifecycleAction,
   bulkModerationAction,
-  bulkVerifyAction,
   itemLifecycleAction,
   itemModerationAction,
-  itemVerifyAction,
   useAdminDashboard,
 } from '../hooks/useAdminDashboard'
 
@@ -65,7 +63,6 @@ export const AdminPage = () => {
     runSingleItemAction,
     runBulkAction,
     flaggedQueue,
-    pendingQueue,
   } = useAdminDashboard()
 
   useEffect(() => {
@@ -101,16 +98,9 @@ export const AdminPage = () => {
 
   const selectedSet = new Set(selectedIds)
   const canRunBulk = selectedIds.length > 0 && !actionLoading
-  const summaryCount = activePreset === 'pending'
-    ? pendingQueue.length
-    : activePreset === 'flagged' || activePreset === 'suspicious'
-      ? flaggedQueue.length
-      : items.length
-  const reviewItems = activePreset === 'pending'
-    ? pendingQueue
-    : activePreset === 'flagged' || activePreset === 'suspicious'
-      ? flaggedQueue
-      : items
+  const selectedFlaggedIds = selectedIds.filter((id) => items.some((item) => item.id === id && item.moderation_status === 'flagged'))
+  const summaryCount = flaggedQueue.length
+  const reviewItems = flaggedQueue
 
   const applyAuditFilters = async () => {
     setAuditOffset(0)
@@ -166,7 +156,7 @@ export const AdminPage = () => {
           </div>
 
           {activeTab === 'review' ? (
-            <SectionCard title="Review queue" subtitle={`Role: ${role || 'none'}. Fast triage with preset queues.`}>
+            <SectionCard title="Review queue" subtitle={`Role: ${role || 'none'}. Complaint-based moderation for flagged posts.`}>
               <QueuePresetControls
                 activePreset={activePreset}
                 disabled={loadingItems}
@@ -192,10 +182,13 @@ export const AdminPage = () => {
               {selectedIds.length > 0 ? (
                 <div className="actions-row bulk-strip">
                   <span className="subtle">Selected: {selectedIds.length}</span>
-                  <button onClick={() => canRunBulk && void runBulkAction('Bulk approve', () => bulkModerationAction(selectedIds, 'approve'))}>Bulk approve</button>
-                  <button className="button-neutral" onClick={() => canRunBulk && void runBulkAction('Bulk reject', () => bulkModerationAction(selectedIds, 'reject', 'Rejected by admin'))}>Bulk reject</button>
-                  <button className="button-ghost" onClick={() => canRunBulk && void runBulkAction('Bulk flag', () => bulkModerationAction(selectedIds, 'flag', 'Flagged by admin'))}>Bulk flag</button>
-                  <button className="button-neutral" onClick={() => canRunBulk && void runBulkAction('Bulk unflag', () => bulkModerationAction(selectedIds, 'unflag'))}>Bulk unflag</button>
+                  <button className="button-neutral" onClick={() => selectedFlaggedIds.length > 0 && void runBulkAction('Bulk ignore complaint', () => bulkModerationAction(selectedFlaggedIds, 'unflag'))} disabled={selectedFlaggedIds.length === 0}>Ignore complaint (selected)</button>
+                  {role === 'admin' ? (
+                    <button className="button-danger" onClick={() => {
+                      if (!window.confirm(`Delete ${selectedIds.length} selected posts?`)) return
+                      void runBulkAction('Bulk delete', () => bulkLifecycleAction(selectedIds, 'delete'))
+                    }}>Delete post (selected)</button>
+                  ) : null}
                   <button className="button-neutral" onClick={() => setSelectedIds([])}>Clear</button>
                 </div>
               ) : null}
@@ -204,16 +197,18 @@ export const AdminPage = () => {
                 signals={signals}
                 selectedIds={selectedIds}
                 onToggleSelected={(id) => setSelectedIds((prev) => (selectedSet.has(id) ? prev.filter((row) => row !== id) : [...prev, id]))}
-                onApprove={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'approve'))}
-                onReject={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'reject', 'Rejected by admin'))}
-                onFlag={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'flag', 'Flagged by admin'))}
-                onUnflag={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'unflag'))}
+                canDelete={role === 'admin'}
+                onIgnoreComplaint={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'unflag'))}
+                onDelete={(id) => {
+                  if (!window.confirm(`Delete post #${id}?`)) return
+                  void runSingleItemAction(id, () => itemLifecycleAction(id, 'delete'))
+                }}
               />
             </SectionCard>
           ) : null}
 
           {activeTab === 'reports' ? (
-            <SectionCard title="Reports" subtitle="Browse and moderate all reports with a simpler filter workflow.">
+            <SectionCard title="Reports" subtitle="Browse reports and handle complaints with minimal actions.">
               <AdminFiltersPanel
                 compact
                 filters={itemFilters}
@@ -245,24 +240,15 @@ export const AdminPage = () => {
                   onToggleSelected={(id) => setSelectedIds((prev) => (selectedSet.has(id) ? prev.filter((row) => row !== id) : [...prev, id]))}
                   onSelectAllVisible={() => setSelectedIds(items.map((item) => item.id))}
                   onClearSelection={() => setSelectedIds([])}
-                  onBulkApprove={() => canRunBulk && void runBulkAction('Bulk approve', () => bulkModerationAction(selectedIds, 'approve'))}
-                  onBulkReject={() => canRunBulk && void runBulkAction('Bulk reject', () => bulkModerationAction(selectedIds, 'reject', 'Rejected by admin'))}
-                  onBulkFlag={() => canRunBulk && void runBulkAction('Bulk flag', () => bulkModerationAction(selectedIds, 'flag', 'Flagged by admin'))}
-                  onBulkUnflag={() => canRunBulk && void runBulkAction('Bulk unflag', () => bulkModerationAction(selectedIds, 'unflag'))}
-                  onBulkVerify={(next) => canRunBulk && role === 'admin' && void runBulkAction(next ? 'Bulk verify' : 'Bulk unverify', () => bulkVerifyAction(selectedIds, next))}
-                  onBulkLifecycle={(action) => {
+                  onBulkIgnoreComplaints={() => selectedFlaggedIds.length > 0 && void runBulkAction('Bulk ignore complaint', () => bulkModerationAction(selectedFlaggedIds, 'unflag'))}
+                  onBulkDelete={() => {
                     if (!canRunBulk || role !== 'admin') return
-                    if (!window.confirm(`Apply ${action} to ${selectedIds.length} selected reports?`)) return
-                    void runBulkAction(`Bulk ${action}`, () => bulkLifecycleAction(selectedIds, action))
+                    if (!window.confirm(`Delete ${selectedIds.length} selected posts?`)) return
+                    void runBulkAction('Bulk delete', () => bulkLifecycleAction(selectedIds, 'delete'))
                   }}
-                  onApprove={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'approve'))}
-                  onReject={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'reject', 'Rejected by admin'))}
-                  onFlag={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'flag', 'Flagged by admin'))}
-                  onVerifyToggle={(id, next) => void runSingleItemAction(id, () => itemVerifyAction(id, next))}
-                  onResolve={(id) => void runSingleItemAction(id, () => itemLifecycleAction(id, 'resolve'))}
-                  onReopen={(id) => void runSingleItemAction(id, () => itemLifecycleAction(id, 'reopen'))}
+                  onIgnoreComplaint={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'unflag'))}
                   onDelete={(id) => {
-                    if (!window.confirm(`Delete report #${id}?`)) return
+                    if (!window.confirm(`Delete post #${id}?`)) return
                     void runSingleItemAction(id, () => itemLifecycleAction(id, 'delete'))
                   }}
                 />
@@ -294,7 +280,7 @@ export const AdminPage = () => {
               />
               <details className="admin-system-details" open={showSystemDetails} onToggle={(e) => setShowSystemDetails((e.currentTarget as HTMLDetailsElement).open)}>
                 <summary>System details</summary>
-                <p className="subtle">High-risk flagged (24h): {queueSummary?.high_risk_flagged_24h ?? 0} · Stale pending (48h): {queueSummary?.stale_pending_48h ?? 0} {loadingStats ? '· Updating…' : ''}</p>
+                <p className="subtle">High-risk flagged (24h): {queueSummary?.high_risk_flagged_24h ?? 0} · Stale complaints (48h): {queueSummary?.stale_pending_48h ?? 0} {loadingStats ? '· Updating…' : ''}</p>
                 <p className="subtle">Duplicate flags 24h: {observability?.duplicate_flags_24h ?? 0} · Duplicate claims 24h: {observability?.duplicate_claims_24h ?? 0} · Claim pressure 24h: {observability?.claims_created_24h ?? 0}</p>
                 <p className="subtle">Blocked audit queries 24h: {observability?.blocked_admin_audit_queries_24h ?? 0} · Runtime: {String(observability?.semantic_runtime?.state ?? 'unknown')}</p>
                 <p className="subtle">Maintenance: temp {String(observability?.cleanup?.maintenance_status?.temp_media_cleanup?.last_success_at ?? 'n/a')} · orphan {String(observability?.cleanup?.maintenance_status?.finalized_orphan_cleanup?.last_success_at ?? 'n/a')} · anti-abuse {String(observability?.cleanup?.maintenance_status?.anti_abuse_retention_cleanup?.last_success_at ?? 'n/a')} · audit {String(observability?.cleanup?.maintenance_status?.audit_retention_cleanup?.last_success_at ?? 'n/a')}</p>

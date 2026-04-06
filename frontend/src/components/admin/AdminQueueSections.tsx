@@ -7,10 +7,9 @@ type QueueProps = {
   signals: Record<number, ModerationSignal>
   selectedIds?: number[]
   onToggleSelected?: (itemId: number) => void
-  onApprove: (itemId: number) => void
-  onReject: (itemId: number) => void
-  onFlag: (itemId: number) => void
-  onUnflag: (itemId: number) => void
+  canDelete: boolean
+  onDelete: (itemId: number) => void
+  onIgnoreComplaint: (itemId: number) => void
 }
 
 export const ModerationQueueFeed = ({
@@ -18,10 +17,9 @@ export const ModerationQueueFeed = ({
   signals,
   selectedIds = [],
   onToggleSelected,
-  onApprove,
-  onReject,
-  onFlag,
-  onUnflag,
+  canDelete,
+  onDelete,
+  onIgnoreComplaint,
 }: QueueProps) => (
   <>
     {items.length === 0 ? <p className="subtle">No reports in this queue.</p> : items.map((item) => (
@@ -35,13 +33,8 @@ export const ModerationQueueFeed = ({
         <p className="subtle">{item.category} · {item.location} · @{item.owner_telegram_username || item.telegram_username || 'n/a'}</p>
         <ModerationSignals signal={signals[item.id]} />
         <div className="actions-row">
-          <button onClick={() => onApprove(item.id)}>Approve</button>
-          <button className="button-neutral" onClick={() => onReject(item.id)}>Reject</button>
-          {item.moderation_status === 'flagged' ? (
-            <button className="button-ghost" onClick={() => onUnflag(item.id)}>Unflag</button>
-          ) : (
-            <button className="button-ghost" onClick={() => onFlag(item.id)}>Flag</button>
-          )}
+          <button className="button-neutral" onClick={() => onIgnoreComplaint(item.id)}>Ignore complaint</button>
+          {canDelete ? <button className="button-danger" onClick={() => onDelete(item.id)}>Delete post</button> : null}
         </div>
       </article>
     ))}

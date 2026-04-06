@@ -309,7 +309,7 @@ export const fetchAdminItems = async (params: AdminItemsParams) => {
   return response.data
 }
 
-export const moderateItem = async (itemId: number, action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
+export const moderateItem = async (itemId: number, action: 'flag' | 'unflag', reason?: string) => {
   const response = await apiClient.post<Item>(`/items/admin/items/${itemId}/moderate`, { action, reason })
   return response.data
 }
@@ -339,7 +339,7 @@ export const fetchModerationStats = async () => {
   return response.data
 }
 
-export const bulkModerateItems = async (item_ids: number[], action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
+export const bulkModerateItems = async (item_ids: number[], action: 'flag' | 'unflag', reason?: string) => {
   const response = await apiClient.post<BulkActionResponse>('/items/admin/items/bulk-moderate', { item_ids, action, reason })
   return response.data
 }

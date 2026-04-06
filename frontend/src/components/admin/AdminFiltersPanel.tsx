@@ -13,7 +13,7 @@ export const AdminFiltersPanel = ({ filters, onChange, onSubmit, compact = false
   return (
     <form className="filters admin-filters" onSubmit={(e) => { e.preventDefault(); onSubmit() }}>
       <label className="filter-field filter-field-search">Search<input value={filters.query} onChange={(e) => patch('query', e.target.value)} placeholder="Title/location/contact/user" /></label>
-      <label className="filter-field">Moderation<select value={filters.moderationFilter} onChange={(e) => patch('moderationFilter', e.target.value)}><option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="flagged">Flagged</option></select></label>
+      <label className="filter-field">Moderation<select value={filters.moderationFilter} onChange={(e) => patch('moderationFilter', e.target.value)}><option value="all">All</option><option value="flagged">Flagged complaints</option></select></label>
       <label className="filter-field">Lifecycle<select value={filters.lifecycleFilter} onChange={(e) => patch('lifecycleFilter', e.target.value)}><option value="all">All</option><option value="active">Active</option><option value="resolved">Resolved</option><option value="deleted">Deleted</option></select></label>
       <label className="filter-field">Status<select value={filters.statusFilter} onChange={(e) => patch('statusFilter', e.target.value)}><option value="all">All</option><option value="lost">Lost</option><option value="found">Found</option></select></label>
       <label className="filter-field">Category<input value={filters.categoryFilter} onChange={(e) => patch('categoryFilter', e.target.value)} placeholder="Exact category" /></label>

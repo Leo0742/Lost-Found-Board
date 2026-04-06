@@ -21,7 +21,7 @@ import {
 } from '../api/items'
 import { Item } from '../types/item'
 
-export type QueuePreset = 'flagged' | 'pending' | 'recent' | 'suspicious'
+export type QueuePreset = 'flagged' | 'suspicious'
 
 export type ItemFilters = {
   moderationFilter: string
@@ -81,18 +81,6 @@ const PRESET_FILTERS: Record<QueuePreset, ItemFilters> = {
     lifecycleFilter: 'active',
     moderationFilter: 'flagged',
     sortBy: 'moderated_at',
-  },
-  pending: {
-    ...defaultItemFilters,
-    lifecycleFilter: 'active',
-    moderationFilter: 'pending',
-    sortBy: 'created_at',
-  },
-  recent: {
-    ...defaultItemFilters,
-    lifecycleFilter: 'active',
-    moderationFilter: 'all',
-    sortBy: 'updated_at',
   },
   suspicious: {
     ...defaultItemFilters,
@@ -342,8 +330,6 @@ export const useAdminDashboard = () => {
     .filter((item) => item.moderation_status === 'flagged')
     .sort((a, b) => ((signals[b.id]?.recent_flags_24h ?? 0) + (signals[b.id]?.blocked_events_24h ?? 0)) - ((signals[a.id]?.recent_flags_24h ?? 0) + (signals[a.id]?.blocked_events_24h ?? 0))), [items, signals])
 
-  const pendingQueue = useMemo(() => items.filter((item) => item.moderation_status === 'pending'), [items])
-
   return {
     items,
     signals,
@@ -382,13 +368,12 @@ export const useAdminDashboard = () => {
     applyPreset,
     summary,
     flaggedQueue,
-    pendingQueue,
   }
 }
 
 export const itemModerationAction = (
   itemId: number,
-  action: 'approve' | 'reject' | 'flag' | 'unflag',
+  action: 'flag' | 'unflag',
   reason?: string,
 ) => moderateItem(itemId, action, reason)
 
@@ -396,7 +381,7 @@ export const itemVerifyAction = (itemId: number, isVerified: boolean) => verifyI
 
 export const itemLifecycleAction = (itemId: number, action: 'resolve' | 'reopen' | 'delete') => lifecycleItemAdmin(itemId, action)
 
-export const bulkModerationAction = (itemIds: number[], action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => bulkModerateItems(itemIds, action, reason)
+export const bulkModerationAction = (itemIds: number[], action: 'flag' | 'unflag', reason?: string) => bulkModerateItems(itemIds, action, reason)
 
 export const bulkVerifyAction = (itemIds: number[], isVerified: boolean) => bulkVerifyItems(itemIds, isVerified)
 
