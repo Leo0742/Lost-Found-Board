@@ -273,6 +273,20 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .thumb { height: 172px; margin-bottom: .75rem; }
 .detail-image { max-height: 380px; margin-bottom: .8rem; }
 .match-thumb { max-height: 150px; margin-bottom: .55rem; }
+.card-media {
+  position: relative;
+}
+.card-media .thumb {
+  margin-bottom: 0;
+}
+.card-status-badge {
+  position: absolute;
+  top: .65rem;
+  left: .65rem;
+  z-index: 1;
+  box-shadow: 0 8px 18px rgba(15, 30, 70, 0.2);
+  backdrop-filter: blur(2px);
+}
 
 .card-head {
   display: flex;

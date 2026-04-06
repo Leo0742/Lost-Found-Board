@@ -17,17 +17,16 @@ const formatRelativeTime = (value: string, t: (key: string, params?: Record<stri
 export const ItemCard = ({ item }: { item: Item }) => {
   const imageUrl = item.image_path ? `/media/${item.image_path}` : null
   const { t, language } = useSettings()
+  const statusLabel = item.status.toUpperCase()
 
   return (
     <article className="board-card stack">
-      {imageUrl ? <img className="thumb" src={imageUrl} alt={item.title} loading="lazy" /> : <div className="thumb thumb-placeholder" aria-hidden="true">{t('board.noPhoto')}</div>}
+      <div className="card-media">
+        {imageUrl ? <img className="thumb" src={imageUrl} alt={item.title} loading="lazy" /> : <div className="thumb thumb-placeholder" aria-hidden="true">{t('board.noPhoto')}</div>}
+        <span className={`badge card-status-badge ${item.status}`}>{statusLabel}</span>
+      </div>
       <div className="card-head">
         <div className="stack" style={{ gap: '.4rem' }}>
-          <div className="status-row">
-            <span className={`badge ${item.status}`}>{item.status}</span>
-            {item.is_verified ? <span className="badge approved">{t('status.verified')}</span> : null}
-            <span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>
-          </div>
           <h3>
             <Link to={`/items/${item.id}`}>{item.title}</Link>
           </h3>
@@ -39,7 +38,6 @@ export const ItemCard = ({ item }: { item: Item }) => {
         <span>{item.location}</span>
       </div>
       <div className="meta">
-        <span>#{item.id}</span>
         <span>{formatRelativeTime(item.created_at, t, language)}</span>
       </div>
       <Link to={`/items/${item.id}`}><button type="button" className="button-neutral card-cta">{t('board.openDetails')}</button></Link>
