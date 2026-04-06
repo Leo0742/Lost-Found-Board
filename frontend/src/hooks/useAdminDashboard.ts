@@ -75,6 +75,34 @@ const defaultAuditFilters: AuditFilters = {
   auditLimit: 30,
 }
 
+const PRESET_FILTERS: Record<QueuePreset, ItemFilters> = {
+  flagged: {
+    ...defaultItemFilters,
+    lifecycleFilter: 'active',
+    moderationFilter: 'flagged',
+    sortBy: 'moderated_at',
+  },
+  pending: {
+    ...defaultItemFilters,
+    lifecycleFilter: 'active',
+    moderationFilter: 'pending',
+    sortBy: 'created_at',
+  },
+  recent: {
+    ...defaultItemFilters,
+    lifecycleFilter: 'active',
+    moderationFilter: 'all',
+    sortBy: 'updated_at',
+  },
+  suspicious: {
+    ...defaultItemFilters,
+    lifecycleFilter: 'active',
+    moderationFilter: 'flagged',
+    sortBy: 'moderated_at',
+    suspiciousOnly: true,
+  },
+}
+
 export const useAdminDashboard = () => {
   const [items, setItems] = useState<Item[]>([])
   const [signals, setSignals] = useState<Record<number, ModerationSignal>>({})
@@ -291,34 +319,7 @@ export const useAdminDashboard = () => {
   }, [collectRefreshWarnings, loadAudit, loadItems, loadStats])
 
   const applyPreset = useCallback(async (preset: QueuePreset) => {
-    const presetFilters: Record<QueuePreset, ItemFilters> = {
-      flagged: {
-        ...defaultItemFilters,
-        lifecycleFilter: 'active',
-        moderationFilter: 'flagged',
-        sortBy: 'moderated_at',
-      },
-      pending: {
-        ...defaultItemFilters,
-        lifecycleFilter: 'active',
-        moderationFilter: 'pending',
-        sortBy: 'created_at',
-      },
-      recent: {
-        ...defaultItemFilters,
-        lifecycleFilter: 'active',
-        moderationFilter: 'all',
-        sortBy: 'updated_at',
-      },
-      suspicious: {
-        ...defaultItemFilters,
-        lifecycleFilter: 'active',
-        moderationFilter: 'flagged',
-        sortBy: 'moderated_at',
-        suspiciousOnly: true,
-      },
-    }
-    const nextFilters = presetFilters[preset]
+    const nextFilters = { ...PRESET_FILTERS[preset] }
     setActivePreset(preset)
     setItemsOffset(0)
     setItemFiltersState(nextFilters)

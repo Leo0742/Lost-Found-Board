@@ -33,14 +33,14 @@ export const AuditFeedSection = ({
   return (
     <>
       <form className="filters audit-filters" onSubmit={(e) => { e.preventDefault(); onApply() }}>
-        <label className="filter-field filter-field-wide">Event type<input value={filters.auditType} onChange={(e) => patch('auditType', e.target.value)} placeholder="item_moderated" /></label>
+        <label className="filter-field audit-field-event">Event type<input value={filters.auditType} onChange={(e) => patch('auditType', e.target.value)} placeholder="item_moderated" /></label>
         <label className="filter-field">Actor<input value={filters.auditActor} onChange={(e) => patch('auditActor', e.target.value)} placeholder="Telegram ID" /></label>
         <label className="filter-field">Item<input value={filters.auditItem} onChange={(e) => patch('auditItem', e.target.value)} placeholder="Item ID" /></label>
         <label className="filter-field">Claim<input value={filters.auditClaim} onChange={(e) => patch('auditClaim', e.target.value)} placeholder="Claim ID" /></label>
         <label className="filter-field">From<input type="datetime-local" value={filters.auditCreatedFrom} onChange={(e) => patch('auditCreatedFrom', e.target.value)} /></label>
         <label className="filter-field">To<input type="datetime-local" value={filters.auditCreatedTo} onChange={(e) => patch('auditCreatedTo', e.target.value)} /></label>
         <label className="filter-field">Limit<select value={filters.auditLimit} onChange={(e) => patch('auditLimit', Number(e.target.value))}><option value={20}>20</option><option value={30}>30</option><option value={50}>50</option></select></label>
-        <div className="filter-actions">
+        <div className="filter-actions audit-filters-actions">
           <button type="submit">Apply filters</button>
         </div>
       </form>

@@ -58,19 +58,23 @@ export const AllReportsSection = ({
         <button className="button-neutral" onClick={onSelectAllVisible}>Select all visible</button>
         <button className="button-neutral" onClick={onClearSelection}>Clear selection</button>
         <span className="subtle">Selected: {selectedIds.length}</span>
-        <button onClick={onBulkApprove} disabled={selectedIds.length === 0}>Bulk approve</button>
-        <button className="button-neutral" onClick={onBulkReject} disabled={selectedIds.length === 0}>Bulk reject</button>
-        <button className="button-ghost" onClick={onBulkFlag} disabled={selectedIds.length === 0}>Bulk flag</button>
-        <button className="button-neutral" onClick={onBulkUnflag} disabled={selectedIds.length === 0}>Bulk unflag</button>
-        {role === 'admin' ? (
-          <>
-            <button onClick={() => onBulkVerify(true)} disabled={selectedIds.length === 0}>Bulk verify</button>
-            <button className="button-neutral" onClick={() => onBulkVerify(false)} disabled={selectedIds.length === 0}>Bulk unverify</button>
-            <button onClick={() => onBulkLifecycle('resolve')} disabled={selectedIds.length === 0}>Bulk resolve</button>
-            <button className="button-neutral" onClick={() => onBulkLifecycle('reopen')} disabled={selectedIds.length === 0}>Bulk reopen</button>
-          </>
-        ) : null}
       </div>
+      {selectedIds.length > 0 ? (
+        <div className="actions-row bulk-strip">
+          <button onClick={onBulkApprove}>Bulk approve</button>
+          <button className="button-neutral" onClick={onBulkReject}>Bulk reject</button>
+          <button className="button-ghost" onClick={onBulkFlag}>Bulk flag</button>
+          <button className="button-neutral" onClick={onBulkUnflag}>Bulk unflag</button>
+          {role === 'admin' ? (
+            <>
+              <button onClick={() => onBulkVerify(true)}>Bulk verify</button>
+              <button className="button-neutral" onClick={() => onBulkVerify(false)}>Bulk unverify</button>
+              <button onClick={() => onBulkLifecycle('resolve')}>Bulk resolve</button>
+              <button className="button-neutral" onClick={() => onBulkLifecycle('reopen')}>Bulk reopen</button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid">
         {items.map((item) => (
           <article key={item.id} className="card stack">
