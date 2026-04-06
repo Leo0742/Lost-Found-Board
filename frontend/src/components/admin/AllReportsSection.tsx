@@ -2,6 +2,7 @@ import { ModerationSignal } from '../../api/items'
 import { Item } from '../../types/item'
 import { EmptyState } from '../ui'
 import { ModerationSignals } from './ModerationSignals'
+import { useSettings } from '../../context/SettingsContext'
 
 type Props = {
   items: Item[]
@@ -11,18 +12,9 @@ type Props = {
   onToggleSelected: (itemId: number) => void
   onSelectAllVisible: () => void
   onClearSelection: () => void
-  onBulkApprove: () => void
-  onBulkReject: () => void
-  onBulkFlag: () => void
-  onBulkUnflag: () => void
-  onBulkVerify: (isVerified: boolean) => void
-  onBulkLifecycle: (action: 'resolve' | 'reopen') => void
-  onApprove: (itemId: number) => void
-  onReject: (itemId: number) => void
-  onFlag: (itemId: number) => void
-  onVerifyToggle: (itemId: number, isVerified: boolean) => void
-  onResolve: (itemId: number) => void
-  onReopen: (itemId: number) => void
+  onBulkIgnoreComplaints: () => void
+  onBulkDelete: () => void
+  onIgnoreComplaint: (itemId: number) => void
   onDelete: (itemId: number) => void
 }
 
@@ -34,70 +26,50 @@ export const AllReportsSection = ({
   onToggleSelected,
   onSelectAllVisible,
   onClearSelection,
-  onBulkApprove,
-  onBulkReject,
-  onBulkFlag,
-  onBulkUnflag,
-  onBulkVerify,
-  onBulkLifecycle,
-  onApprove,
-  onReject,
-  onFlag,
-  onVerifyToggle,
-  onResolve,
-  onReopen,
+  onBulkIgnoreComplaints,
+  onBulkDelete,
+  onIgnoreComplaint,
   onDelete,
 }: Props) => {
+  const { t } = useSettings()
+
   if (items.length === 0) {
-    return <EmptyState title="No reports in this queue" subtitle="Adjust filters to widen scope." />
+    return <EmptyState title={t('admin.reports.emptyTitle')} subtitle={t('admin.reports.emptySubtitle')} />
   }
 
   return (
     <div className="stack">
       <div className="actions-row">
-        <button className="button-neutral" onClick={onSelectAllVisible}>Select all visible</button>
-        <button className="button-neutral" onClick={onClearSelection}>Clear selection</button>
-        <span className="subtle">Selected: {selectedIds.length}</span>
+        <button className="button-neutral" onClick={onSelectAllVisible}>{t('admin.selectAll')}</button>
+        <button className="button-neutral" onClick={onClearSelection}>{t('admin.clearSelection')}</button>
+        <span className="subtle">{t('admin.selectedCount', { count: selectedIds.length })}</span>
       </div>
       {selectedIds.length > 0 ? (
         <div className="actions-row bulk-strip">
-          <button onClick={onBulkApprove}>Bulk approve</button>
-          <button className="button-neutral" onClick={onBulkReject}>Bulk reject</button>
-          <button className="button-ghost" onClick={onBulkFlag}>Bulk flag</button>
-          <button className="button-neutral" onClick={onBulkUnflag}>Bulk unflag</button>
-          {role === 'admin' ? (
-            <>
-              <button onClick={() => onBulkVerify(true)}>Bulk verify</button>
-              <button className="button-neutral" onClick={() => onBulkVerify(false)}>Bulk unverify</button>
-              <button onClick={() => onBulkLifecycle('resolve')}>Bulk resolve</button>
-              <button className="button-neutral" onClick={() => onBulkLifecycle('reopen')}>Bulk reopen</button>
-            </>
-          ) : null}
+          <button className="button-neutral" onClick={onBulkIgnoreComplaints}>{t('admin.action.ignoreComplaintSelected')}</button>
+          {role === 'admin' ? <button className="button-danger" onClick={onBulkDelete}>{t('admin.action.deletePostSelected')}</button> : null}
         </div>
       ) : null}
       <div className="grid">
         {items.map((item) => (
           <article key={item.id} className="card stack">
-            <label><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggleSelected(item.id)} /> Select #{item.id}</label>
+            <label><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggleSelected(item.id)} /> {t('admin.queue.select')} #{item.id}</label>
             <h3>#{item.id} {item.title}</h3>
             <p className="subtle">{item.category} · {item.location} · @{item.owner_telegram_username || item.telegram_username || 'n/a'}</p>
             <ModerationSignals signal={signals[item.id]} />
             <div className="status-row">
-              <span className={`badge ${item.status}`}>{item.status}</span>
-              <span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span>
-              <span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>
-              {signals[item.id]?.suspicion_markers?.length ? <span className="badge flagged">high risk</span> : null}
+              <span className={`badge ${item.status}`}>{item.status === 'lost' ? t('board.status.lost') : t('board.status.found')}</span>
+              <span className={`badge ${item.lifecycle}`}>{t(`item.lifecycle.${item.lifecycle}`)}</span>
+              <span className={`badge ${item.moderation_status}`}>{t(`item.moderation.${item.moderation_status}`)}</span>
+              {signals[item.id]?.suspicion_markers?.length ? <span className="badge flagged">{t('admin.signals.highRisk')}</span> : null}
             </div>
             <div className="actions-row">
-              <button onClick={() => onApprove(item.id)}>Approve</button>
-              <button className="button-neutral" onClick={() => onReject(item.id)}>Reject</button>
-              <button className="button-ghost" onClick={() => onFlag(item.id)}>Flag</button>
+              {item.moderation_status === 'flagged' ? (
+                <button className="button-neutral" onClick={() => onIgnoreComplaint(item.id)}>{t('admin.action.ignoreComplaint')}</button>
+              ) : null}
               {role === 'admin' ? (
                 <>
-                  <button onClick={() => onVerifyToggle(item.id, !item.is_verified)}>{item.is_verified ? 'Unverify' : 'Verify'}</button>
-                  <button onClick={() => onResolve(item.id)}>Resolve</button>
-                  <button className="button-neutral" onClick={() => onReopen(item.id)}>Reopen</button>
-                  <button className="button-danger" onClick={() => onDelete(item.id)}>Delete</button>
+                  <button className="button-danger" onClick={() => onDelete(item.id)}>{t('admin.action.deletePost')}</button>
                 </>
               ) : null}
             </div>

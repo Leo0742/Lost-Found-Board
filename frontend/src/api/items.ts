@@ -1,6 +1,7 @@
 import { apiClient, refreshCsrfToken } from './client'
 import { Item, NewItemPayload, ItemStatus, MatchResult, ItemLifecycle } from '../types/item'
 import { cachedCall, invalidateCache } from './cache'
+import { emitAuthUpdated } from '../utils/authRefresh'
 
 export type TelegramIdentity = {
   telegram_user_id: number
@@ -263,6 +264,7 @@ export const unlinkTelegram = async () => {
   await apiClient.post('/auth/unlink')
   await refreshCsrfToken()
   invalidateCache('auth:')
+  emitAuthUpdated()
 }
 
 export const uploadItemImage = async (file: File) => {
@@ -307,7 +309,7 @@ export const fetchAdminItems = async (params: AdminItemsParams) => {
   return response.data
 }
 
-export const moderateItem = async (itemId: number, action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
+export const moderateItem = async (itemId: number, action: 'flag' | 'unflag', reason?: string) => {
   const response = await apiClient.post<Item>(`/items/admin/items/${itemId}/moderate`, { action, reason })
   return response.data
 }
@@ -337,7 +339,7 @@ export const fetchModerationStats = async () => {
   return response.data
 }
 
-export const bulkModerateItems = async (item_ids: number[], action: 'approve' | 'reject' | 'flag' | 'unflag', reason?: string) => {
+export const bulkModerateItems = async (item_ids: number[], action: 'flag' | 'unflag', reason?: string) => {
   const response = await apiClient.post<BulkActionResponse>('/items/admin/items/bulk-moderate', { item_ids, action, reason })
   return response.data
 }
