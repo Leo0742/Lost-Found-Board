@@ -1,10 +1,10 @@
 import { QueuePreset } from '../../hooks/useAdminDashboard'
 
-const presetButtons: Array<{ preset: QueuePreset; label: string; variant: string }> = [
-  { preset: 'flagged', label: 'Flagged priority', variant: '' },
-  { preset: 'pending', label: 'Pending intake', variant: 'button-neutral' },
-  { preset: 'recent', label: 'Recent activity', variant: 'button-neutral' },
-  { preset: 'suspicious', label: 'Suspicious focus', variant: 'button-ghost' },
+const presetButtons: Array<{ preset: QueuePreset; label: string }> = [
+  { preset: 'flagged', label: 'Flagged priority' },
+  { preset: 'pending', label: 'Pending intake' },
+  { preset: 'recent', label: 'Recent activity' },
+  { preset: 'suspicious', label: 'Suspicious focus' },
 ]
 
 export const QueuePresetControls = ({
@@ -17,11 +17,11 @@ export const QueuePresetControls = ({
   onApply: (preset: QueuePreset) => void
 }) => (
   <div className="quick-actions">
-    {presetButtons.map(({ preset, label, variant }) => (
+    {presetButtons.map(({ preset, label }) => (
       <button
         key={preset}
         type="button"
-        className={`${variant} ${activePreset === preset ? 'preset-active' : ''}`.trim()}
+        className={`button-neutral preset-button ${activePreset === preset ? 'preset-active' : ''}`.trim()}
         aria-pressed={activePreset === preset}
         disabled={disabled}
         onClick={() => onApply(preset)}
