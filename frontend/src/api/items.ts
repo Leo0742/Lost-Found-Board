@@ -1,6 +1,7 @@
 import { apiClient, refreshCsrfToken } from './client'
 import { Item, NewItemPayload, ItemStatus, MatchResult, ItemLifecycle } from '../types/item'
 import { cachedCall, invalidateCache } from './cache'
+import { emitAuthUpdated } from '../utils/authRefresh'
 
 export type TelegramIdentity = {
   telegram_user_id: number
@@ -263,6 +264,7 @@ export const unlinkTelegram = async () => {
   await apiClient.post('/auth/unlink')
   await refreshCsrfToken()
   invalidateCache('auth:')
+  emitAuthUpdated()
 }
 
 export const uploadItemImage = async (file: File) => {

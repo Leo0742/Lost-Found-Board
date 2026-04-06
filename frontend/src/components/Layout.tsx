@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { getAuthMe } from '../api/items'
 import { ThemeMode, useSettings } from '../context/SettingsContext'
+import { onAuthUpdated } from '../utils/authRefresh'
 
 const themeModes: ThemeMode[] = ['light', 'dark', 'system']
 
@@ -14,9 +15,9 @@ export const Layout = () => {
   const { theme, setTheme, language, setLanguage, t } = useSettings()
 
   useEffect(() => {
-    const loadAuth = async () => {
+    const loadAuth = async (forceRefresh?: boolean) => {
       try {
-        const me = await getAuthMe()
+        const me = await getAuthMe(forceRefresh ? { forceRefresh: true } : undefined)
         if (!me.linked || !me.admin_access) {
           setRole(null)
           setLinkedUsername(null)
@@ -30,7 +31,11 @@ export const Layout = () => {
         setRole(null)
       }
     }
-    loadAuth()
+    void loadAuth()
+    const unsubscribe = onAuthUpdated(() => {
+      void loadAuth(true)
+    })
+    return unsubscribe
   }, [])
 
   useEffect(() => {

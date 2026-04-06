@@ -12,6 +12,7 @@ import {
 } from '../api/items'
 import { EmptyState, LoadingGrid, SectionCard } from '../components/ui'
 import { useSettings } from '../context/SettingsContext'
+import { emitAuthUpdated } from '../utils/authRefresh'
 
 const YANDEX_MAPS_API_KEY = __YANDEX_MAPS_API_KEY__
 const YANDEX_MAPS_SUGGEST_API_KEY = __YANDEX_MAPS_SUGGEST_API_KEY__
@@ -243,6 +244,8 @@ export const ProfilePage = () => {
   const [copiedLinkCommand, setCopiedLinkCommand] = useState(false)
   const linkPollIntervalRef = useRef<number | null>(null)
   const linkPollTimeoutRef = useRef<number | null>(null)
+  const postLinkPollIntervalRef = useRef<number | null>(null)
+  const postLinkPollTimeoutRef = useRef<number | null>(null)
   const linkPollSessionRef = useRef(0)
 
   const stopLinkPolling = () => {
@@ -253,6 +256,17 @@ export const ProfilePage = () => {
     if (linkPollTimeoutRef.current) {
       window.clearTimeout(linkPollTimeoutRef.current)
       linkPollTimeoutRef.current = null
+    }
+  }
+
+  const stopPostLinkPolling = () => {
+    if (postLinkPollIntervalRef.current) {
+      window.clearInterval(postLinkPollIntervalRef.current)
+      postLinkPollIntervalRef.current = null
+    }
+    if (postLinkPollTimeoutRef.current) {
+      window.clearTimeout(postLinkPollTimeoutRef.current)
+      postLinkPollTimeoutRef.current = null
     }
   }
 
@@ -288,8 +302,39 @@ export const ProfilePage = () => {
 
   useEffect(() => {
     void load()
-    return () => stopLinkPolling()
+    return () => {
+      stopLinkPolling()
+      stopPostLinkPolling()
+    }
   }, [])
+
+  const hasSyncedTelegramProfile = (nextProfile: UserProfile) => Boolean(
+    nextProfile.telegram_avatar_url
+    || nextProfile.telegram_username
+    || nextProfile.telegram_display_name
+  )
+
+  const startPostLinkProfilePolling = (sessionId: number) => {
+    stopPostLinkPolling()
+    const poll = async () => {
+      try {
+        const nextProfile = await fetchMyProfile({ bypassCache: true })
+        if (sessionId !== linkPollSessionRef.current) return
+        applyProfile(nextProfile)
+        if (hasSyncedTelegramProfile(nextProfile)) {
+          stopPostLinkPolling()
+        }
+      } catch {
+        if (sessionId !== linkPollSessionRef.current) return
+      }
+    }
+    void poll()
+    postLinkPollIntervalRef.current = window.setInterval(() => { void poll() }, 1200)
+    postLinkPollTimeoutRef.current = window.setTimeout(() => {
+      if (sessionId !== linkPollSessionRef.current) return
+      stopPostLinkPolling()
+    }, 8_000)
+  }
 
   const refreshLinkStatus = async (options?: { clearWaiting?: boolean }) => {
     const me = await getAuthMe({ forceRefresh: true })
@@ -298,17 +343,18 @@ export const ProfilePage = () => {
       if (options?.clearWaiting) setLinkState('idle')
       return false
     }
-    const nextProfile = await fetchMyProfile({ bypassCache: true })
-    applyProfile(nextProfile)
+    emitAuthUpdated()
     setLinkState('linked')
     setLinkCode(null)
     setCopiedLinkCommand(false)
     setMessage('Telegram linked successfully.')
+    startPostLinkProfilePolling(linkPollSessionRef.current)
     return true
   }
 
   const startLinkPolling = () => {
     stopLinkPolling()
+    stopPostLinkPolling()
     linkPollSessionRef.current += 1
     const sessionId = linkPollSessionRef.current
     setLinkState('waiting')
@@ -318,14 +364,13 @@ export const ProfilePage = () => {
         const me = await getAuthMe({ forceRefresh: true })
         if (sessionId !== linkPollSessionRef.current) return
         if (!me.linked) return
-        const nextProfile = await fetchMyProfile({ bypassCache: true })
-        if (sessionId !== linkPollSessionRef.current) return
-        applyProfile(nextProfile)
         setLinked(true)
+        emitAuthUpdated()
         setLinkState('linked')
         setLinkCode(null)
         setCopiedLinkCommand(false)
         setMessage('Telegram linked successfully.')
+        startPostLinkProfilePolling(sessionId)
         stopLinkPolling()
       } catch {
         if (sessionId !== linkPollSessionRef.current) return
@@ -424,6 +469,7 @@ export const ProfilePage = () => {
                 <button className="button-neutral button-sm profile-unlink-icon-button" type="button" onClick={async () => {
                   await unlinkTelegram()
                   stopLinkPolling()
+                  stopPostLinkPolling()
                   linkPollSessionRef.current += 1
                   await load()
                   setLinkCode(null)
@@ -564,6 +610,7 @@ export const ProfilePage = () => {
                 setError(null)
                 setMessage(null)
                 stopLinkPolling()
+                stopPostLinkPolling()
                 linkPollSessionRef.current += 1
                 const generated = await generateLinkCode()
                 setLinkCode(generated.code)
