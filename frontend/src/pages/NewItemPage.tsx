@@ -6,14 +6,14 @@ import { ItemStatus } from '../types/item'
 import { SectionCard } from '../components/ui'
 import { useSettings } from '../context/SettingsContext'
 
-const formatBackendValidationError = (error: unknown): string => {
-  if (!axios.isAxiosError(error)) return 'Could not create item. Please review the form.'
+const formatBackendValidationError = (error: unknown, fallback: string): string => {
+  if (!axios.isAxiosError(error)) return fallback
   const detail = error.response?.data?.detail
-  if (!Array.isArray(detail) || detail.length === 0) return 'Could not create item. Please review the form.'
+  if (!Array.isArray(detail) || detail.length === 0) return fallback
   return detail.map((issue: { loc?: Array<string | number>; msg?: string }) => {
     const field = issue.loc?.[issue.loc.length - 1]
     return field && issue.msg ? `${String(field)}: ${issue.msg}` : null
-  }).filter(Boolean).join('; ') || 'Could not create item. Please review the form.'
+  }).filter(Boolean).join('; ') || fallback
 }
 
 export const NewItemPage = () => {
@@ -67,7 +67,7 @@ export const NewItemPage = () => {
     refreshAuthState().catch(() => setError(t('new.authInitFailed')))
     fetchCategories().then((data) => {
       if (data.length > 0) setCategories(data)
-    }).catch(() => setCategories(['Other']))
+    }).catch(() => setCategories([t('new.category.other')]))
   }, [refreshAuthState, t])
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export const NewItemPage = () => {
       setSuccess(t('new.created'))
       setTimeout(() => navigate(`/items/${item.id}`), 450)
     } catch (err) {
-      setError(formatBackendValidationError(err))
+      setError(formatBackendValidationError(err, t('new.createFailed')))
     }
   }
 
@@ -133,7 +133,7 @@ export const NewItemPage = () => {
                 {categories.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
             </label>
-            {categoryHint && categoryHint.category !== 'Other' ? (
+            {categoryHint && categoryHint.category !== t('new.category.other') ? (
               <p className="notice">
                 {t('new.suggested')}: <strong>{categoryHint.category}</strong> ({Math.round(categoryHint.confidence * 100)}%)
                 {' '}<button type="button" className="button-ghost" onClick={() => setCategory(categoryHint.category)}>{t('new.useSuggestion')}</button>
@@ -141,9 +141,9 @@ export const NewItemPage = () => {
             ) : null}
             <label>{t('board.filter.location')}<input required minLength={2} maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} /></label>
             {profileAddresses.length > 0 ? (
-              <label>Use saved profile address
+              <label>{t('new.savedAddress.use')}
                 <select value="" onChange={(e) => { if (e.target.value) setLocation(e.target.value) }}>
-                  <option value="">Select saved address</option>
+                  <option value="">{t('new.savedAddress.select')}</option>
                   {profileAddresses.map((address) => <option key={address.id} value={address.address_text}>{address.label}: {address.address_text}</option>)}
                 </select>
               </label>

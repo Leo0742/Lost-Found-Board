@@ -143,20 +143,20 @@ export const AdminPage = () => {
 
       {!authLoading && linked && isAdmin ? (
         <>
-          <div className="reports-tabs admin-tabs" role="tablist" aria-label="Moderation workspace tabs">
+          <div className="reports-tabs admin-tabs" role="tablist" aria-label={t('admin.tabs.label')}>
             <button type="button" role="tab" aria-selected={activeTab === 'review'} className={`reports-tab ${activeTab === 'review' ? 'active' : ''}`} onClick={() => setActiveTab('review')}>
-              Review queue <span>{summaryCount}</span>
+              {t('admin.tab.review')} <span>{summaryCount}</span>
             </button>
             <button type="button" role="tab" aria-selected={activeTab === 'reports'} className={`reports-tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
-              Reports <span>{items.length}</span>
+              {t('admin.tab.reports')} <span>{items.length}</span>
             </button>
             <button type="button" role="tab" aria-selected={activeTab === 'audit'} className={`reports-tab ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>
-              Audit log <span>{auditEvents.length}</span>
+              {t('admin.tab.audit')} <span>{auditEvents.length}</span>
             </button>
           </div>
 
           {activeTab === 'review' ? (
-            <SectionCard title="Review queue" subtitle={`Role: ${role || 'none'}. Complaint-based moderation for flagged posts.`}>
+            <SectionCard title={t('admin.review.title')} subtitle={t('admin.review.subtitle', { role: role ? t(`role.${role}`) : t('admin.role.none') })}>
               <QueuePresetControls
                 activePreset={activePreset}
                 disabled={loadingItems}
@@ -170,26 +170,26 @@ export const AdminPage = () => {
                   const next = Math.max(0, itemsOffset - itemFilters.limit)
                   setItemsOffset(next)
                   void loadItems(undefined, next)
-                }}>Prev page</button>
+                }}>{t('admin.prevPage')}</button>
                 <button type="button" className="button-neutral" disabled={loadingItems} onClick={() => {
                   const next = itemsOffset + itemFilters.limit
                   setItemsOffset(next)
                   void loadItems(undefined, next)
-                }}>Next page</button>
-                <p className="subtle">Offset: {itemsOffset}</p>
-                {loadingItems ? <p className="subtle">Loading queue…</p> : null}
+                }}>{t('admin.nextPage')}</button>
+                <p className="subtle">{t('admin.offset', { offset: itemsOffset })}</p>
+                {loadingItems ? <p className="subtle">{t('admin.loadingQueue')}</p> : null}
               </div>
               {selectedIds.length > 0 ? (
                 <div className="actions-row bulk-strip">
-                  <span className="subtle">Selected: {selectedIds.length}</span>
-                  <button className="button-neutral" onClick={() => selectedFlaggedIds.length > 0 && void runBulkAction('Bulk ignore complaint', () => bulkModerationAction(selectedFlaggedIds, 'unflag'))} disabled={selectedFlaggedIds.length === 0}>Ignore complaint (selected)</button>
+                  <span className="subtle">{t('admin.selectedCount', { count: selectedIds.length })}</span>
+                  <button className="button-neutral" onClick={() => selectedFlaggedIds.length > 0 && void runBulkAction(t('admin.action.bulkIgnoreComplaint'), () => bulkModerationAction(selectedFlaggedIds, 'unflag'))} disabled={selectedFlaggedIds.length === 0}>{t('admin.action.ignoreComplaintSelected')}</button>
                   {role === 'admin' ? (
                     <button className="button-danger" onClick={() => {
-                      if (!window.confirm(`Delete ${selectedIds.length} selected posts?`)) return
-                      void runBulkAction('Bulk delete', () => bulkLifecycleAction(selectedIds, 'delete'))
-                    }}>Delete post (selected)</button>
+                      if (!window.confirm(t('admin.confirm.deleteSelected', { count: selectedIds.length }))) return
+                      void runBulkAction(t('admin.action.bulkDelete'), () => bulkLifecycleAction(selectedIds, 'delete'))
+                    }}>{t('admin.action.deletePostSelected')}</button>
                   ) : null}
-                  <button className="button-neutral" onClick={() => setSelectedIds([])}>Clear</button>
+                  <button className="button-neutral" onClick={() => setSelectedIds([])}>{t('admin.clearSelection')}</button>
                 </div>
               ) : null}
               <ModerationQueueFeed
@@ -200,7 +200,7 @@ export const AdminPage = () => {
                 canDelete={role === 'admin'}
                 onIgnoreComplaint={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'unflag'))}
                 onDelete={(id) => {
-                  if (!window.confirm(`Delete post #${id}?`)) return
+                  if (!window.confirm(t('admin.confirm.deletePost', { id }))) return
                   void runSingleItemAction(id, () => itemLifecycleAction(id, 'delete'))
                 }}
               />
@@ -208,7 +208,7 @@ export const AdminPage = () => {
           ) : null}
 
           {activeTab === 'reports' ? (
-            <SectionCard title="Reports" subtitle="Browse reports and handle complaints with minimal actions.">
+            <SectionCard title={t('admin.reports.title')} subtitle={t('admin.reports.subtitle')}>
               <AdminFiltersPanel
                 compact
                 filters={itemFilters}
@@ -223,15 +223,15 @@ export const AdminPage = () => {
                   const next = Math.max(0, itemsOffset - itemFilters.limit)
                   setItemsOffset(next)
                   void loadItems(undefined, next)
-                }}>Prev page</button>
+                }}>{t('admin.prevPage')}</button>
                 <button type="button" className="button-neutral" disabled={loadingItems} onClick={() => {
                   const next = itemsOffset + itemFilters.limit
                   setItemsOffset(next)
                   void loadItems(undefined, next)
-                }}>Next page</button>
-                <p className="subtle">Offset: {itemsOffset}</p>
+                }}>{t('admin.nextPage')}</button>
+                <p className="subtle">{t('admin.offset', { offset: itemsOffset })}</p>
               </div>
-              {items.length === 0 ? <EmptyState title="No reports in this queue" subtitle="Adjust filters to widen scope." /> : (
+              {items.length === 0 ? <EmptyState title={t('admin.reports.emptyTitle')} subtitle={t('admin.reports.emptySubtitle')} /> : (
                 <AllReportsSection
                   items={items}
                   signals={signals}
@@ -240,15 +240,15 @@ export const AdminPage = () => {
                   onToggleSelected={(id) => setSelectedIds((prev) => (selectedSet.has(id) ? prev.filter((row) => row !== id) : [...prev, id]))}
                   onSelectAllVisible={() => setSelectedIds(items.map((item) => item.id))}
                   onClearSelection={() => setSelectedIds([])}
-                  onBulkIgnoreComplaints={() => selectedFlaggedIds.length > 0 && void runBulkAction('Bulk ignore complaint', () => bulkModerationAction(selectedFlaggedIds, 'unflag'))}
+                  onBulkIgnoreComplaints={() => selectedFlaggedIds.length > 0 && void runBulkAction(t('admin.action.bulkIgnoreComplaint'), () => bulkModerationAction(selectedFlaggedIds, 'unflag'))}
                   onBulkDelete={() => {
                     if (!canRunBulk || role !== 'admin') return
-                    if (!window.confirm(`Delete ${selectedIds.length} selected posts?`)) return
-                    void runBulkAction('Bulk delete', () => bulkLifecycleAction(selectedIds, 'delete'))
+                    if (!window.confirm(t('admin.confirm.deleteSelected', { count: selectedIds.length }))) return
+                    void runBulkAction(t('admin.action.bulkDelete'), () => bulkLifecycleAction(selectedIds, 'delete'))
                   }}
                   onIgnoreComplaint={(id) => void runSingleItemAction(id, () => itemModerationAction(id, 'unflag'))}
                   onDelete={(id) => {
-                    if (!window.confirm(`Delete post #${id}?`)) return
+                    if (!window.confirm(t('admin.confirm.deletePost', { id }))) return
                     void runSingleItemAction(id, () => itemLifecycleAction(id, 'delete'))
                   }}
                 />
@@ -257,7 +257,7 @@ export const AdminPage = () => {
           ) : null}
 
           {activeTab === 'audit' ? (
-            <SectionCard title="Audit log" subtitle="Review moderation history and filter by actor/item/date.">
+            <SectionCard title={t('admin.audit.title')} subtitle={t('admin.audit.subtitle')}>
               <AuditFeedSection
                 filters={auditFilters}
                 onFiltersChange={setAuditFilters}
@@ -279,12 +279,12 @@ export const AdminPage = () => {
                 onFilterClaim={(claimId) => void filterByClaim(claimId)}
               />
               <details className="admin-system-details" open={showSystemDetails} onToggle={(e) => setShowSystemDetails((e.currentTarget as HTMLDetailsElement).open)}>
-                <summary>System details</summary>
-                <p className="subtle">High-risk flagged (24h): {queueSummary?.high_risk_flagged_24h ?? 0} · Stale complaints (48h): {queueSummary?.stale_pending_48h ?? 0} {loadingStats ? '· Updating…' : ''}</p>
-                <p className="subtle">Duplicate flags 24h: {observability?.duplicate_flags_24h ?? 0} · Duplicate claims 24h: {observability?.duplicate_claims_24h ?? 0} · Claim pressure 24h: {observability?.claims_created_24h ?? 0}</p>
-                <p className="subtle">Blocked audit queries 24h: {observability?.blocked_admin_audit_queries_24h ?? 0} · Runtime: {String(observability?.semantic_runtime?.state ?? 'unknown')}</p>
-                <p className="subtle">Maintenance: temp {String(observability?.cleanup?.maintenance_status?.temp_media_cleanup?.last_success_at ?? 'n/a')} · orphan {String(observability?.cleanup?.maintenance_status?.finalized_orphan_cleanup?.last_success_at ?? 'n/a')} · anti-abuse {String(observability?.cleanup?.maintenance_status?.anti_abuse_retention_cleanup?.last_success_at ?? 'n/a')} · audit {String(observability?.cleanup?.maintenance_status?.audit_retention_cleanup?.last_success_at ?? 'n/a')}</p>
-                {maintenanceHealthSummary ? <p className="subtle">Maintenance health: {maintenanceHealthSummary}</p> : null}
+                <summary>{t('admin.systemDetails')}</summary>
+                <p className="subtle">{t('admin.system.highRisk', { count: queueSummary?.high_risk_flagged_24h ?? 0 })} · {t('admin.system.stale', { count: queueSummary?.stale_pending_48h ?? 0 })} {loadingStats ? `· ${t('admin.system.updating')}` : ''}</p>
+                <p className="subtle">{t('admin.system.dupFlags', { count: observability?.duplicate_flags_24h ?? 0 })} · {t('admin.system.dupClaims', { count: observability?.duplicate_claims_24h ?? 0 })} · {t('admin.system.claimPressure', { count: observability?.claims_created_24h ?? 0 })}</p>
+                <p className="subtle">{t('admin.system.blockedQueries', { count: observability?.blocked_admin_audit_queries_24h ?? 0 })} · {t('admin.system.runtime', { state: String(observability?.semantic_runtime?.state ?? t('admin.unknown')) })}</p>
+                <p className="subtle">{t('admin.system.maintenance')}: temp {String(observability?.cleanup?.maintenance_status?.temp_media_cleanup?.last_success_at ?? 'n/a')} · orphan {String(observability?.cleanup?.maintenance_status?.finalized_orphan_cleanup?.last_success_at ?? 'n/a')} · anti-abuse {String(observability?.cleanup?.maintenance_status?.anti_abuse_retention_cleanup?.last_success_at ?? 'n/a')} · audit {String(observability?.cleanup?.maintenance_status?.audit_retention_cleanup?.last_success_at ?? 'n/a')}</p>
+                {maintenanceHealthSummary ? <p className="subtle">{t('admin.system.maintenanceHealth')}: {maintenanceHealthSummary}</p> : null}
               </details>
             </SectionCard>
           ) : null}

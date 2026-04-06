@@ -1,8 +1,9 @@
 import { QueuePreset } from '../../hooks/useAdminDashboard'
+import { useSettings } from '../../context/SettingsContext'
 
-const presetButtons: Array<{ preset: QueuePreset; label: string }> = [
-  { preset: 'flagged', label: 'Flagged priority' },
-  { preset: 'suspicious', label: 'Suspicious focus' },
+const presetButtons: Array<{ preset: QueuePreset; key: string }> = [
+  { preset: 'flagged', key: 'admin.preset.flagged' },
+  { preset: 'suspicious', key: 'admin.preset.suspicious' },
 ]
 
 export const QueuePresetControls = ({
@@ -13,9 +14,11 @@ export const QueuePresetControls = ({
   activePreset: QueuePreset | null
   disabled?: boolean
   onApply: (preset: QueuePreset) => void
-}) => (
-  <div className="quick-actions">
-    {presetButtons.map(({ preset, label }) => (
+}) => {
+  const { t } = useSettings()
+  return (
+    <div className="quick-actions">
+      {presetButtons.map(({ preset, key }) => (
       <button
         key={preset}
         type="button"
@@ -24,8 +27,9 @@ export const QueuePresetControls = ({
         disabled={disabled}
         onClick={() => onApply(preset)}
       >
-        {label}
+        {t(key)}
       </button>
-    ))}
-  </div>
-)
+      ))}
+    </div>
+  )
+}

@@ -17,6 +17,7 @@ export const MyReportsPage = () => {
   const [outgoingError, setOutgoingError] = useState<string | null>(null)
   const [linkedUserId, setLinkedUserId] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<'my' | 'incoming' | 'outgoing'>('my')
+  const claimStatusLabel = (status: Claim['status']) => t(`item.claim.status.${status}`)
 
   const load = async () => {
     setLoading(true); setError(null); setIncomingError(null); setOutgoingError(null)
@@ -85,15 +86,15 @@ export const MyReportsPage = () => {
 
       {linkedUserId ? (
         <div className="reports-workspace stack">
-          <div className="reports-tabs" role="tablist" aria-label="Reports workspace tabs">
+          <div className="reports-tabs" role="tablist" aria-label={t('reports.tabs.label')}>
             <button type="button" role="tab" aria-selected={activeTab === 'my'} className={`reports-tab ${activeTab === 'my' ? 'active' : ''}`} onClick={() => setActiveTab('my')}>
-              My reports <span>{summary.total}</span>
+              {t('reports.tab.my')} <span>{summary.total}</span>
             </button>
             <button type="button" role="tab" aria-selected={activeTab === 'incoming'} className={`reports-tab ${activeTab === 'incoming' ? 'active' : ''}`} onClick={() => setActiveTab('incoming')}>
-              Incoming claims <span>{summary.incoming}</span>
+              {t('reports.tab.incoming')} <span>{summary.incoming}</span>
             </button>
             <button type="button" role="tab" aria-selected={activeTab === 'outgoing'} className={`reports-tab ${activeTab === 'outgoing' ? 'active' : ''}`} onClick={() => setActiveTab('outgoing')}>
-              Outgoing claims <span>{summary.outgoing}</span>
+              {t('reports.tab.outgoing')} <span>{summary.outgoing}</span>
             </button>
           </div>
 
@@ -105,7 +106,7 @@ export const MyReportsPage = () => {
                     <article key={item.id} className="card stack">
                       <div className="card-media">
                         {item.image_path ? <img className="thumb" src={`/media/${item.image_path}`} alt={item.title} /> : <div className="thumb" aria-hidden="true" />}
-                        <span className={`badge card-status-badge ${item.status}`}>{item.status.toUpperCase()}</span>
+                        <span className={`badge card-status-badge ${item.status}`}>{item.status === 'lost' ? t('board.status.lost') : t('board.status.found')}</span>
                       </div>
                       <div className="card-head"><h3><Link to={`/items/${item.id}`}>{item.title}</Link></h3></div>
                       <div className="actions-row">
@@ -127,8 +128,8 @@ export const MyReportsPage = () => {
                 <div className="claim-feed">
                   {incomingClaims.map((claim) => (
                     <article key={claim.id} className="card stack">
-                      <div className="meta"><strong>Claim #{claim.id}</strong><span className={`badge ${claim.status === 'pending' ? 'pending' : 'approved'}`}>{claim.status}</span></div>
-                      <div className="subtle">Item #{claim.target_item_id}</div>
+                      <div className="meta"><strong>{t('item.claim.label')}</strong><span className={`badge ${claim.status === 'pending' ? 'pending' : 'approved'}`}>{claimStatusLabel(claim.status)}</span></div>
+                      <div className="subtle">{claim.target_item_title || t('item.claim.participant.target')}</div>
                       {claim.status === 'pending' ? <div className="actions-row">
                         <button type="button" onClick={async () => { await claimAction(claim.id, 'approve'); await load() }}>{t('item.approve')}</button>
                         <button className="button-neutral" type="button" onClick={async () => { await claimAction(claim.id, 'reject'); await load() }}>{t('item.reject')}</button>
@@ -148,19 +149,19 @@ export const MyReportsPage = () => {
                 <div className="claim-feed">
                   {outgoingClaims.map((claim) => (
                     <article key={claim.id} className="card stack">
-                      <div className="meta"><strong>Claim #{claim.id}</strong><span className={`badge ${claim.status === 'pending' ? 'pending' : 'approved'}`}>{claim.status}</span></div>
-                      <small className="subtle">#{claim.source_item_id} → #{claim.target_item_id}</small>
+                      <div className="meta"><strong>{t('item.claim.label')}</strong><span className={`badge ${claim.status === 'pending' ? 'pending' : 'approved'}`}>{claimStatusLabel(claim.status)}</span></div>
+                      <small className="subtle">{claim.source_item_title || t('item.claim.participant.source')} → {claim.target_item_title || t('item.claim.participant.target')}</small>
                       {claim.status === 'approved' ? (
                         <>
                           <p className="notice">{t('reports.contactsShared')}: {claim.shared_source_contact || '-'} / {claim.shared_target_contact || '-'}</p>
-                          {(claim.shared_source_address || claim.shared_target_address) ? <p className="subtle">Address: {claim.shared_source_address || '-'} / {claim.shared_target_address || '-'}</p> : null}
+                          {(claim.shared_source_address || claim.shared_target_address) ? <p className="subtle">{t('item.claim.address')}: {claim.shared_source_address || '-'} / {claim.shared_target_address || '-'}</p> : null}
                           <div className="actions-row">
-                            {claim.shared_source_route_url ? <a href={claim.shared_source_route_url} target="_blank" rel="noreferrer"><button type="button" className="button-neutral">Build route (source)</button></a> : null}
-                            {claim.shared_target_route_url ? <a href={claim.shared_target_route_url} target="_blank" rel="noreferrer"><button type="button" className="button-neutral">Build route (target)</button></a> : null}
-                            <button type="button" className="button-neutral" onClick={() => shareLiveLocationForClaim(claim.id)}>Share current location</button>
-                            {claim.shared_live_location?.route_url ? <a href={claim.shared_live_location.route_url} target="_blank" rel="noreferrer"><button type="button">Open live meetup</button></a> : null}
+                            {claim.shared_source_route_url ? <a href={claim.shared_source_route_url} target="_blank" rel="noreferrer"><button type="button" className="button-neutral">{t('item.claim.buildRouteSource')}</button></a> : null}
+                            {claim.shared_target_route_url ? <a href={claim.shared_target_route_url} target="_blank" rel="noreferrer"><button type="button" className="button-neutral">{t('item.claim.buildRouteTarget')}</button></a> : null}
+                            <button type="button" className="button-neutral" onClick={() => shareLiveLocationForClaim(claim.id)}>{t('item.claim.shareLocation')}</button>
+                            {claim.shared_live_location?.route_url ? <a href={claim.shared_live_location.route_url} target="_blank" rel="noreferrer"><button type="button">{t('item.claim.openLiveMeetup')}</button></a> : null}
                           </div>
-                          {claim.shared_live_location ? <p className="subtle">Live location shared until {new Date(claim.shared_live_location.expires_at).toLocaleString()}</p> : null}
+                          {claim.shared_live_location ? <p className="subtle">{t('item.claim.liveLocationUntil', { until: new Date(claim.shared_live_location.expires_at).toLocaleString() })}</p> : null}
                         </>
                       ) : null}
                     </article>
