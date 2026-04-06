@@ -86,6 +86,13 @@ a { color: inherit; }
   background: #e9eefc;
 }
 
+.top-nav a.active {
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 16px rgba(35, 56, 105, 0.12);
+}
+
 .role-chip {
   background: var(--surface);
   border: 1px solid var(--border);

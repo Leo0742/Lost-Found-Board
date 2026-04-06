@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { getAuthMe } from '../api/items'
 import { ThemeMode, useSettings } from '../context/SettingsContext'
 import { onAuthUpdated } from '../utils/authRefresh'
@@ -12,6 +12,7 @@ export const Layout = () => {
   const [role, setRole] = useState<'admin' | 'moderator' | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsRef = useRef<HTMLDivElement | null>(null)
+  const location = useLocation()
   const { theme, setTheme, language, setLanguage, t } = useSettings()
 
   useEffect(() => {
@@ -59,17 +60,25 @@ export const Layout = () => {
     return ''
   }, [role, t])
 
+  const pathname = location.pathname
+  const navClassName = (isActive: boolean) => `top-nav-link${isActive ? ' active' : ''}`
+  const itemsActive = pathname === '/' || pathname.startsWith('/items')
+  const reportActive = pathname.startsWith('/new') || pathname.startsWith('/new-item')
+  const myReportsActive = pathname.startsWith('/my-reports')
+  const profileActive = pathname.startsWith('/profile')
+  const moderationActive = pathname.startsWith('/admin')
+
   return (
     <div className="app-shell">
       <header className="header">
         <div className="container">
           <Link className="brand" to="/">{t('app.title')}</Link>
           <nav className="top-nav">
-            <NavLink to="/">{t('nav.items')}</NavLink>
-            <NavLink to="/new">{t('nav.report')}</NavLink>
-            <NavLink to="/my-reports">{t('nav.myReports')}</NavLink>
-            <NavLink to="/profile">{t('nav.profile')}</NavLink>
-            {role ? <NavLink to="/admin">{t('nav.moderation')}</NavLink> : null}
+            <NavLink to="/" className={navClassName(itemsActive)}>{t('nav.items')}</NavLink>
+            <NavLink to="/new" className={navClassName(reportActive)}>{t('nav.report')}</NavLink>
+            <NavLink to="/my-reports" className={navClassName(myReportsActive)}>{t('nav.myReports')}</NavLink>
+            <NavLink to="/profile" className={navClassName(profileActive)}>{t('nav.profile')}</NavLink>
+            {role ? <NavLink to="/admin" className={navClassName(moderationActive)}>{t('nav.moderation')}</NavLink> : null}
           </nav>
           <div className="header-right" ref={settingsRef}>
             {role ? (
