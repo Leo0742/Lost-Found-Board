@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AxiosError } from 'axios'
-import { claimAction, fetchMyItems, getAuthMe, listClaims, resolveItem, reopenItem, shareClaimLiveLocation, softDeleteItem } from '../api/items'
+import { claimAction, deleteItemPermanently, fetchMyItems, getAuthMe, listClaims, resolveItem, reopenItem, shareClaimLiveLocation } from '../api/items'
 import { Claim, Item } from '../types/item'
 import { Link } from 'react-router-dom'
 import { EmptyState, LoadingGrid, SectionCard } from '../components/ui'
@@ -43,8 +43,14 @@ export const MyReportsPage = () => {
     try {
       if (action === 'resolve') await resolveItem(itemId)
       if (action === 'reopen') await reopenItem(itemId)
-      if (action === 'delete') await softDeleteItem(itemId)
-      await load()
+      if (action === 'delete') {
+        const confirmed = window.confirm(t('reports.deleteConfirm'))
+        if (!confirmed) return
+        await deleteItemPermanently(itemId)
+        setItems((prev) => prev.filter((item) => item.id !== itemId))
+      } else {
+        await load()
+      }
     } catch { setError(t('reports.actionFailed')) }
   }
 
@@ -97,13 +103,15 @@ export const MyReportsPage = () => {
                 <div className="grid">
                   {items.map((item) => (
                     <article key={item.id} className="card stack">
-                      {item.image_path ? <img className="thumb" src={`/media/${item.image_path}`} alt={item.title} /> : <div className="thumb" aria-hidden="true" />}
-                      <div className="card-head"><h3><Link to={`/items/${item.id}`}>{item.title}</Link></h3><span className={`badge ${item.status}`}>{item.status}</span></div>
-                      <div className="status-row"><span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span><span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span></div>
+                      <div className="card-media">
+                        {item.image_path ? <img className="thumb" src={`/media/${item.image_path}`} alt={item.title} /> : <div className="thumb" aria-hidden="true" />}
+                        <span className={`badge card-status-badge ${item.status}`}>{item.status.toUpperCase()}</span>
+                      </div>
+                      <div className="card-head"><h3><Link to={`/items/${item.id}`}>{item.title}</Link></h3></div>
                       <div className="actions-row">
                         {item.lifecycle === 'active' ? <button type="button" onClick={() => runAction(item.id, 'resolve')}>{t('reports.resolve')}</button> : null}
                         {item.lifecycle === 'resolved' ? <button type="button" onClick={() => runAction(item.id, 'reopen')}>{t('reports.reopen')}</button> : null}
-                        {item.lifecycle !== 'deleted' ? <button className="button-danger" type="button" onClick={() => runAction(item.id, 'delete')}>{t('reports.delete')}</button> : null}
+                        <button className="button-danger" type="button" onClick={() => runAction(item.id, 'delete')}>{t('reports.delete')}</button>
                       </div>
                     </article>
                   ))}

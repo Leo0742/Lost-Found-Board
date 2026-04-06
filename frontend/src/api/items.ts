@@ -286,9 +286,8 @@ export const reopenItem = async (itemId: number) => {
   return response.data
 }
 
-export const softDeleteItem = async (itemId: number) => {
-  const response = await apiClient.post<Item>(`/items/${itemId}/delete`, {})
-  return response.data
+export const deleteItemPermanently = async (itemId: number) => {
+  await apiClient.delete(`/items/${itemId}/owner-delete`)
 }
 
 export const flagItem = async (itemId: number, reason: string) => {

@@ -48,7 +48,7 @@ export const ItemDetailsPage = () => {
     <section className="stack">
       <div className="reports-tabs item-details-tabs" role="tablist" aria-label="Item details tabs">
         <button type="button" role="tab" aria-selected={activeTab === 'overview'} className={`reports-tab ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>
-          Overview <span>{item.lifecycle}</span>
+          Overview <span>{item.status.toUpperCase()}</span>
         </button>
         <button type="button" role="tab" aria-selected={activeTab === 'matches'} className={`reports-tab ${activeTab === 'matches' ? 'active' : ''}`} onClick={() => setActiveTab('matches')}>
           Matches <span>{matches.length}</span>
@@ -74,10 +74,7 @@ export const ItemDetailsPage = () => {
             </>
           ) : <div className="detail-image" aria-hidden="true" />}
           <div className="status-row">
-            <span className={`badge ${item.status}`}>{item.status}</span>
-            <span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span>
-            <span className={`badge ${item.moderation_status}`}>{item.moderation_status}</span>
-            <span className="badge approved">{item.is_verified ? t('status.verified') : t('status.unverified')}</span>
+            <span className={`badge ${item.status}`}>{item.status.toUpperCase()}</span>
           </div>
           <h2>{item.title}</h2>
           <p>{item.description}</p>

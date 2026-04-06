@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy import Select, and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
 
@@ -348,6 +348,24 @@ class ItemService:
         log_event(self.db, "item_deleted", actor_telegram_user_id=item.owner_telegram_user_id or item.telegram_user_id, item_id=item.id)
         self.db.commit()
         return item
+
+    def permanently_delete_item(self, item: Item) -> None:
+        claim_ids = list(
+            self.db.scalars(
+                select(Claim.id).where(
+                    or_(Claim.source_item_id == item.id, Claim.target_item_id == item.id)
+                )
+            ).all()
+        )
+        if item.image_path:
+            remove_media_file(item.image_path)
+        self.db.execute(delete(AntiAbuseEvent).where(AntiAbuseEvent.item_id == item.id))
+        if claim_ids:
+            self.db.execute(delete(AuditEvent).where(AuditEvent.claim_id.in_(claim_ids)))
+            self.db.execute(delete(Claim).where(Claim.id.in_(claim_ids)))
+        self.db.execute(delete(AuditEvent).where(AuditEvent.item_id == item.id))
+        self.db.delete(item)
+        self.db.commit()
 
     def moderate_item(self, item: Item, action: str, moderator: str, reason: str | None = None) -> Item:
         mapping = {

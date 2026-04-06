@@ -704,6 +704,22 @@ def soft_delete_item(
     return service.delete_item(item)
 
 
+@router.delete("/{item_id}/owner-delete", status_code=status.HTTP_204_NO_CONTENT)
+def owner_permanent_delete_item(
+    item_id: int,
+    _: None = Depends(require_csrf_for_session),
+    auth_telegram_user_id: int | None = Depends(get_authenticated_telegram_user_id),
+    db: Session = Depends(get_db),
+) -> None:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not service.is_owner(item, _actor_telegram_id(ItemOwnerAction(), auth_telegram_user_id)):
+        raise HTTPException(status_code=403, detail="Only the owner can delete this item")
+    service.permanently_delete_item(item)
+
+
 @router.post("/{item_id}/flag", response_model=ItemRead)
 def flag_item(
     item_id: int,
@@ -1088,6 +1104,23 @@ def internal_soft_delete_item(
     if not actor_id or not service.is_owner(item, actor_id):
         raise HTTPException(status_code=403, detail="Only owner can delete this item")
     return service.delete_item(item)
+
+
+@router.delete("/internal/{item_id}/owner-delete", status_code=status.HTTP_204_NO_CONTENT)
+def internal_owner_permanent_delete_item(
+    item_id: int,
+    payload: ItemOwnerAction,
+    _: None = Depends(require_internal_access),
+    db: Session = Depends(get_db),
+) -> None:
+    service = ItemService(db)
+    item = service.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    actor_id = payload.telegram_user_id
+    if not actor_id or not service.is_owner(item, actor_id):
+        raise HTTPException(status_code=403, detail="Only owner can delete this item")
+    service.permanently_delete_item(item)
 
 
 
