@@ -485,6 +485,11 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .item-match-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
+.item-match-thumb {
+  height: 220px;
+  object-fit: contain;
+  background: #f2f5ff;
+}
 .item-problem-report {
   margin-top: .35rem;
   border: 1px solid var(--border);
