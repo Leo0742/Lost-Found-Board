@@ -15,6 +15,7 @@ export const ItemDetailsPage = () => {
   const [claims, setClaims] = useState<Claim[]>([])
   const [ownerId, setOwnerId] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'claims'>('overview')
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -59,7 +60,19 @@ export const ItemDetailsPage = () => {
 
       {activeTab === 'overview' ? (
         <SectionCard title={t('item.overview.title')} subtitle={t('item.overview.subtitle')}>
-          {item.image_path ? <img className="detail-image" src={`/media/${item.image_path}`} alt={item.title} /> : <div className="detail-image" aria-hidden="true" />}
+          {item.image_path ? (
+            <>
+              <button type="button" className="item-detail-image-frame" onClick={() => setIsImagePreviewOpen(true)}>
+                <img className="item-detail-image" src={`/media/${item.image_path}`} alt={item.title} />
+              </button>
+              {isImagePreviewOpen ? (
+                <div className="item-image-lightbox" role="dialog" aria-modal="true" aria-label="Expanded report image" onClick={() => setIsImagePreviewOpen(false)}>
+                  <button type="button" className="item-image-lightbox-close" onClick={() => setIsImagePreviewOpen(false)}>Close</button>
+                  <img className="item-image-lightbox-content" src={`/media/${item.image_path}`} alt={item.title} onClick={(e) => e.stopPropagation()} />
+                </div>
+              ) : null}
+            </>
+          ) : <div className="detail-image" aria-hidden="true" />}
           <div className="status-row">
             <span className={`badge ${item.status}`}>{item.status}</span>
             <span className={`badge ${item.lifecycle}`}>{item.lifecycle}</span>
