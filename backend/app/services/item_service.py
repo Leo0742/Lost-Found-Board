@@ -120,13 +120,15 @@ class ItemService:
         category: str | None = None,
         q: str | None = None,
         lifecycle: ItemLifecycle | None = ItemLifecycle.ACTIVE,
-        moderation_status: ModerationStatus | None = ModerationStatus.APPROVED,
+        moderation_status: ModerationStatus | None = None,
     ) -> list[Item]:
         query: Select[tuple[Item]] = select(Item)
         if lifecycle:
             query = query.where(Item.lifecycle == lifecycle)
         if moderation_status:
             query = query.where(Item.moderation_status == moderation_status)
+        else:
+            query = query.where(Item.moderation_status.in_([ModerationStatus.APPROVED, ModerationStatus.FLAGGED]))
         if status:
             query = query.where(Item.status == status)
         if category:

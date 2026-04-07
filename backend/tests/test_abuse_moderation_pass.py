@@ -204,3 +204,92 @@ def test_admin_items_supports_suspicious_only_filter(client, db_session_factory,
     item_ids = {row["id"] for row in response.json()}
     assert flagged["id"] in item_ids
     assert normal["id"] not in item_ids
+
+
+def test_flagged_item_remains_visible_until_admin_delete(client, db_session_factory, monkeypatch):
+    monkeypatch.setenv("ADMIN_TELEGRAM_USER_IDS", "3001")
+    get_settings.cache_clear()
+
+    item = client.post("/api/items", json=_payload("Visible after flag", user_id=1500)).json()
+
+    reporter_session_id, reporter_csrf = _create_web_session(db_session_factory, telegram_user_id=1600)
+    reporter_cookies = {"lfb_session": reporter_session_id}
+    reporter_headers = {"X-CSRF-Token": reporter_csrf}
+
+    flagged = client.post(
+        f"/api/items/{item['id']}/flag",
+        json={"reason": "spam"},
+        cookies=reporter_cookies,
+        headers=reporter_headers,
+    )
+    assert flagged.status_code == 200
+    assert flagged.json()["moderation_status"] == "flagged"
+
+    board = client.get("/api/items", params={"lifecycle": "active"})
+    assert board.status_code == 200
+    assert any(row["id"] == item["id"] for row in board.json())
+
+    details = client.get(f"/api/items/{item['id']}")
+    assert details.status_code == 200
+
+    admin_session_id, admin_csrf = _create_web_session(db_session_factory, telegram_user_id=3001)
+    admin_cookies = {"lfb_session": admin_session_id}
+    admin_headers = {"X-CSRF-Token": admin_csrf}
+
+    deleted = client.post(
+        f"/api/items/admin/items/{item['id']}/lifecycle",
+        json={"action": "delete"},
+        cookies=admin_cookies,
+        headers=admin_headers,
+    )
+    assert deleted.status_code == 200
+
+    board_after_delete = client.get("/api/items", params={"lifecycle": "active"})
+    assert board_after_delete.status_code == 200
+    assert all(row["id"] != item["id"] for row in board_after_delete.json())
+
+    details_after_delete = client.get(f"/api/items/{item['id']}")
+    assert details_after_delete.status_code == 404
+
+
+def test_ignore_complaint_clears_flag_and_keeps_item_visible(client, db_session_factory, monkeypatch):
+    monkeypatch.setenv("ADMIN_TELEGRAM_USER_IDS", "3001")
+    get_settings.cache_clear()
+
+    item = client.post("/api/items", json=_payload("Ignore complaint keep visible", user_id=1700)).json()
+
+    reporter_session_id, reporter_csrf = _create_web_session(db_session_factory, telegram_user_id=1701)
+    reporter_cookies = {"lfb_session": reporter_session_id}
+    reporter_headers = {"X-CSRF-Token": reporter_csrf}
+    client.post(
+        f"/api/items/{item['id']}/flag",
+        json={"reason": "suspicious"},
+        cookies=reporter_cookies,
+        headers=reporter_headers,
+    )
+
+    admin_session_id, admin_csrf = _create_web_session(db_session_factory, telegram_user_id=3001)
+    admin_cookies = {"lfb_session": admin_session_id}
+    admin_headers = {"X-CSRF-Token": admin_csrf}
+
+    ignored = client.post(
+        f"/api/items/admin/items/{item['id']}/moderate",
+        json={"action": "unflag"},
+        cookies=admin_cookies,
+        headers=admin_headers,
+    )
+    assert ignored.status_code == 200
+    assert ignored.json()["moderation_status"] == "approved"
+
+    board = client.get("/api/items", params={"lifecycle": "active"})
+    assert board.status_code == 200
+    assert any(row["id"] == item["id"] for row in board.json())
+
+    admin_flagged_queue = client.get(
+        "/api/items/admin/items",
+        params={"lifecycle": "active", "moderation_status": "flagged"},
+        cookies=admin_cookies,
+        headers=admin_headers,
+    )
+    assert admin_flagged_queue.status_code == 200
+    assert all(row["id"] != item["id"] for row in admin_flagged_queue.json())
