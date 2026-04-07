@@ -4,16 +4,8 @@
 A web app + Telegram bot for posting, discovering, and managing lost-and-found item reports.
 
 ## Demo
-
-Screenshots are expected for final submission/repository polish and must be added manually by the repository owner.
-
-Place screenshots in: `docs/screenshots/`
-
-Use these exact filenames and contents:
-- `docs/screenshots/home.png` — main Items/board page of the web app, showing the homepage or item listing interface in a clean state.
-- `docs/screenshots/new-report.png` — Create Report / New Report page with the report creation form visible in a clean state.
-
-The README already points to the correct location and expected content. Add screenshots to `docs/screenshots/` before final submission.
+![Home page demo](screenshots/home.png)
+![New report demo](screenshots/new-report.png)
 
 ## Product context
 
