@@ -1,491 +1,159 @@
 # Lost & Found Board
 
-**One sentence:** Lost & Found Board is a web application with a Telegram assistant for posting and searching lost or found items.
+## One-line description
+A web app + Telegram bot for posting, discovering, and managing lost-and-found item reports.
 
-## MVP Architecture
+## Demo
 
-- **Backend API:** FastAPI + SQLAlchemy + Alembic.
-- **Database:** PostgreSQL.
-- **Frontend:** React + Vite + TypeScript served by Caddy.
-- **Telegram assistant:** aiogram bot that talks to backend REST API.
-- **Deployment:** Docker Compose for VM/local setup.
+Screenshots are expected for final submission/repository polish and must be added manually by the repository owner.
 
-The codebase is intentionally modular for hackathon speed:
-- `routers` / `schemas` / `services` / `models` split in backend.
-- Telegram bot uses API client (no direct DB access).
-- Rule-based matching logic isolated in one service.
+Place screenshots in: `docs/screenshots/`
 
-## Folder Structure
+Use these exact filenames and contents:
+- `docs/screenshots/home.png` — main Items/board page of the web app, showing the homepage or item listing interface in a clean state.
+- `docs/screenshots/new-report.png` — Create Report / New Report page with the report creation form visible in a clean state.
 
-```text
-.
-├── backend/
-│   ├── alembic/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── db/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   └── services/
-│   ├── scripts/
-│   └── tests/
-├── bot/
-├── frontend/
-└── docker-compose.yml
-```
+The README already points to the correct location and expected content. Add screenshots to `docs/screenshots/` before final submission.
+
+## Product context
+
+**End users**
+- Students, campus staff, office teams, event organizers, or any community that needs a shared lost-and-found board.
+
+**Problem**
+- Lost/found information is usually fragmented across chats and personal messages, making matching and owner handoff slow.
+
+**Solution**
+- Lost & Found Board centralizes reports in a searchable web app and Telegram bot, with matching, moderation, claim workflow, and Telegram-linked identity for trusted ownership actions.
 
 ## Features
 
-### Web app
-- Item list page with card UI.
-- Filters: status (`lost`/`found`/all), keyword query, optional category.
-- Create item page.
-- Item detail page.
-- My Reports page uses server-side Telegram-linked ownership.
-- Lifecycle management from UI (`active`, `resolved`, `deleted`) for owned reports.
-- Optional photo upload with preview on report creation.
-- Photo thumbnails on cards and larger media view on details/matches.
-- Admin moderation page at `/admin` (Telegram-linked role checks).
-- Responsive layout for phone/laptop.
+### Implemented features
 
-### Backend API
-- `POST /api/items`
-- `GET /api/items/me` (requires Telegram-linked web session cookie)
-- `GET /api/items/internal/mine/{telegram_user_id}` (internal bot-only, protected by `X-Internal-Token`)
-- `GET /api/items`
-- `GET /api/items/{id}`
-- `PATCH /api/items/{id} (owner session only)`
-- `DELETE /api/items/{id}`
-- `POST /api/items/{id}/resolve (owner session only)`
-- `POST /api/items/{id}/reopen (owner session only)`
-- `POST /api/items/{id}/delete` (soft delete)
-- `POST /api/items/upload-image` (multipart image upload; requires linked web session or internal bot token)
-- `GET /api/items/search?q=...`
-- `GET /api/items/search-smart?q=...&limit=...` (typo-tolerant ranked search with reasons)
-- `GET /api/items/categories` (canonical category catalog)
-- `GET /api/items/category-suggest?title=...` (category inference by title)
-- `GET /api/items/matches/{id}` (public-safe response, no owner identifiers)
-- `GET /api/items/internal/matches/{id}` (internal bot-only, includes owner ids for notifications)
+**Web app**
+- Browse lost/found listings with filters and search.
+- Create reports with status, category, location, details, contact info, and optional image upload.
+- View item details and match suggestions.
+- Manage own reports in **My Reports** (resolve/reopen/delete).
+- Profile page with contact/address management.
+- Telegram link flow for secure session ownership.
+- Admin moderation page for authorized Telegram-linked admins/moderators.
 
-- `PATCH /api/items/admin/items/{id}` (admin/moderator scoped patch)
-- `POST /api/items/internal/{id}/resolve|reopen|delete` (internal bot-only + token)
-- `POST /api/items/internal/claim-requests` (internal bot-only + token)
-- `GET /api/items/internal/claim-requests?telegram_user_id=...` (internal bot-only + token)
-- `POST /api/items/internal/claim-requests/{id}/{action}` (internal bot-only + token)
-- `GET /api/items/admin/items` (requires Telegram-linked admin/moderator session)
-- `POST /api/items/admin/items/{id}/moderate` (approve/reject/flag/unflag)
-- `POST /api/items/admin/items/{id}/verify`
-- `POST /api/items/admin/items/{id}/lifecycle` (resolve/reopen/delete)
-- `POST /api/items/{id}/flag` (public abuse report)
-- `POST /api/items/claim-requests (session owner only)`
-- `GET /api/items/claim-requests`
-  - Optional `direction`: `all` (default), `incoming`, `outgoing`
-- `POST /api/items/claim-requests/{id}/approve|reject|cancel|complete|not-match` (session participant only)
-- OpenAPI docs at `/docs`.
-- Auth/session endpoints:
-  - `POST /api/auth/session`
-  - `GET /api/auth/me`
-- `GET /api/auth/csrf`
-- `POST /api/auth/link-code`
-- `POST /api/auth/link/confirm` (used by bot `/link`)
-- `POST /api/auth/logout`
-- `POST /api/auth/unlink`
+**Backend API (FastAPI)**
+- CRUD-style item/report endpoints with lifecycle states (`active`, `resolved`, `deleted`).
+- Matching endpoints and smart search.
+- Claim workflow endpoints (approve/reject/cancel/complete/not-match).
+- Anti-abuse protections (rate limits, duplicate suppression, abuse events).
+- Auth/session endpoints with CSRF-aware cookie sessions.
+- Readiness/health endpoints.
 
-### Telegram assistant
-- `/start`
-- `/new` guided conversation
-- `/list`
-- `/search <query>`
-- `/search <query>` now uses fuzzy/token smart ranking with readable match reasons.
-- `/lost`
-- `/found`
-- `/myitems` for ownership-based report management.
-- `/link <code>` to bind website session with Telegram account.
-- `/flag <item_id> <reason>` to report abuse/spam.
-- `/claims` to track claim/contact workflow.
-- `/whoami` to display Telegram account id/username/name and admin role access.
-- `/clear` resets FSM state, clears pending wizard data, removes stale keyboards, and attempts best-effort deletion of recent private-chat messages (with explicit success/failure counts).
-- `/new` category step now supports a richer catalog with inline keyboard pagination and auto-suggested category after title entry.
-- Web report form uses backend category catalog as a real selector and auto-prefills inferred category from title when confidence is high.
-- `/new` wizard includes a photo step (send photo or skip).
-- After `/new`, bot displays matches and sends strong-match notifications to relevant Telegram owners.
+**Telegram bot**
+- Guided `/new` wizard (including optional photo step).
+- Search and listing commands (`/search`, `/list`, `/lost`, `/found`).
+- `/myitems` management actions and match viewing.
+- Session linking via `/link <code>`.
+- Claim and abuse report commands (`/claims`, `/flag`).
 
-### Matching logic (hybrid local, no external API)
-- Opposite status hard filter (`lost` vs `found`).
-- Text normalization (case/punctuation cleanup, alias/synonym mapping, simple RU->EN transliteration, location alias normalization).
-- Rule-based signals (category compatibility, keyword overlap, location overlap).
-- Fuzzy matching with RapidFuzz for title/location/object-type robustness to typos.
-- Local semantic similarity using FastEmbed (CPU model, no cloud inference).
-- Lightweight reranking/boosting based on semantic + extracted feature alignment.
-- Match output includes score, confidence (`high`/`medium`/`low`), and human-readable reasons.
+### Not yet implemented / planned features
+- No dedicated iOS/Android native app (web + Telegram only).
+- No cloud object storage integration; media is stored on local backend volume.
+- No external OAuth providers; identity is based on Telegram session linking.
 
-## Quick Start (Docker Compose)
+## Usage
 
-1. Reset containers and DB volume (recommended after failed migration attempts):
-   ```bash
-   docker compose down -v
-   ```
-2. Copy env values:
-   ```bash
-   cp .env.example .env
-   ```
-3. (Optional for web/api only) keep `TELEGRAM_BOT_TOKEN=replace_me`.
-4. Start core stack (db + backend + frontend):
-   ```bash
-   docker compose up --build
-   ```
-5. Open:
-   - Web UI: `http://localhost` (or `http://localhost:${WEB_PORT}` if overridden)
-   - Backend docs: `http://localhost/api/docs` (proxied)
+### Web app usage
+1. Open the web app.
+2. Browse reports on the home page and filter/search by keyword, status, and category.
+3. Open **Report Item** to submit a new lost/found report (optionally with a photo).
+4. Open an item card to view details and match suggestions.
+5. Use **My Reports** to manage your own reports (resolve/reopen/delete).
+6. Use **Profile** to maintain contact/address data used in flows like claims.
 
-### Start Telegram bot (optional)
+### Telegram bot usage
+1. Start bot with `/start`.
+2. Create report with `/new` (step-by-step wizard).
+3. Search with `/search <query>` or browse `/lost`, `/found`, `/list`.
+4. Manage personal reports via `/myitems`.
+5. Link web session via `/link <code>` when prompted from the website.
+6. Use `/claims` to track item handoff claims.
 
-1. Set a real token in `.env`:
-   ```dotenv
-   TELEGRAM_BOT_TOKEN=<your-real-token>
-   ```
-2. Start with bot profile enabled:
-   ```bash
-   docker compose --profile bot up --build
-   ```
+## Deployment
 
-If the bot profile is enabled without a valid token, the bot container exits immediately with a clear `TELEGRAM_BOT_TOKEN is required` message.
+### Target VM OS
+- **Ubuntu 24.04 LTS**
 
+### Prerequisites on VM
+Install:
+- Git
+- Docker Engine
+- Docker Compose plugin (`docker compose`)
 
-## Local Semantic Model Notes
-
-- Backend uses FastEmbed with `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` by default.
-- Model runs locally on CPU and model files are cached on first use.
-- No external inference API calls are used (local inference only).
-- You can override model via env: `EMBEDDING_MODEL_NAME=<model-name>`.
-- Runtime semantic state is explicit:
-  - `enabled`: model loaded and semantic score is active.
-  - `degraded`: semantic model failed, fallback rule/fuzzy matching remains active.
-  - `disabled`: semantic matching disabled by config.
-- Startup behavior is controlled by:
-  - `EMBEDDING_WARMUP_ON_STARTUP` (default `true`)
-  - `SEMANTIC_MATCHING_ENABLED` (default `true`)
-  - `SEMANTIC_STRICT_MODE` (default `false`; if `true`, `/ready` fails unless semantic is `enabled`).
-
-
-## Web session CSRF + CORS behavior
-
-- Cookie-authenticated mutating requests require `X-CSRF-Token` matching the session token.
-- Frontend fetches token from `GET /api/auth/csrf` and sends it automatically for `POST/PUT/PATCH/DELETE` requests.
-- CSRF enforcement is session-aware: if no `lfb_session` cookie is present, internal token/bot flows are not blocked by CSRF checks.
-- CORS is explicit by default (`CORS_ORIGINS` list), with localhost defaults in `APP_ENV=dev`.
-- `*` with credentials is treated as unsafe; credentials are disabled if wildcard origins are configured.
-
-## Runtime health and readiness
-
-- `GET /health` reports only process liveness.
-- `GET /ready` verifies operational readiness and returns a machine-readable JSON payload:
-  - database query check
-  - critical settings/service initialization
-  - semantic matching runtime state and detail
-  - media storage read/write availability
-  - required internal config presence
-- Degraded semantic mode is considered ready by default (fallback matching works). Enable strict mode only when semantic is a hard requirement.
-
-## Media upload lifecycle
-
-- Uploads are first saved as temporary files under `media/tmp`.
-- During item creation/update, referenced temporary media is promoted to permanent media.
-- Replacing an item image removes the old finalized media file to avoid stale leftovers.
-- Hard/soft deletes remove linked media file paths immediately.
-- Stale temporary files are cleaned on startup and periodically (controlled by `MEDIA_CLEANUP_INTERVAL_MINUTES`, default 60).
-- Orphan finalized files (not referenced by DB) are cleaned conservatively after age cutoff.
-- If create/update fails after a temp upload is referenced, the temp file is removed immediately to reduce orphan risk.
-- TTL for stale temp files remains configurable with `MEDIA_TMP_TTL_HOURS` (default 24).
-
-## Item Lifecycle & Management
-
-- Reports now have a lifecycle field:
-  - `active` (default)
-  - `resolved`
-  - `deleted` (soft delete)
-- Matching/search defaults to active reports.
-- Resolved/deleted reports are excluded from normal match candidate pools.
-- Ownership-sensitive web actions (`resolve/reopen/delete`) are authorized only by linked Telegram web session identity. Bot actions use dedicated `/api/items/internal/...` token-protected endpoints.
-- Raw `DELETE /api/items/{id}` is admin-only (Telegram-linked role check) and should be treated as moderation-only.
-
-## Abuse controls and moderation productivity (latest pass)
-
-- Added backend-enforced rate limiting for risky endpoints (`create item`, `upload image`, `link-code`, `link confirm`, `flag item`, `claim create`, `search-smart`, `category-suggest`, `admin audit list`) with clear `429` responses and action-specific messages.
-- Duplicate public flags are blocked per actor/session/IP + item + normalized reason in a 24h window, with duplicate attempts tracked as separate anti-abuse signals.
-- Claim creation now has stronger duplicate suppression for repeated same-pair submissions within 24h.
-- Anti-abuse event retention cleanup runs on startup/interval to prevent unbounded table growth (`ANTI_ABUSE_EVENT_RETENTION_DAYS`).
-- Admin console now supports stronger queue filtering and sorting (moderation/lifecycle/status/verification/category/owner actor/query/date-range), queue presets, richer abuse signals per item, and improved audit filters/pagination with readable event summaries.
-- Added moderation visibility endpoints:
-  - `GET /api/items/admin/moderation-stats`
-  - `GET /api/items/admin/moderation-signals?item_ids=...`
-- Audit endpoint supports `offset`, `created_from`, `created_to` in addition to existing filters.
-
-### Rate limit env configuration
-
-- `CREATE_RATE_LIMIT_WINDOW_MINUTES`, `CREATE_RATE_LIMIT_MAX_ITEMS`, `CREATE_RATE_LIMIT_MAX_ITEMS_ANON`
-- `UPLOAD_RATE_LIMIT_WINDOW_MINUTES`, `UPLOAD_RATE_LIMIT_MAX`, `UPLOAD_RATE_LIMIT_MAX_ANON`
-- `LINK_CODE_RATE_LIMIT_WINDOW_MINUTES`, `LINK_CODE_RATE_LIMIT_MAX`
-- `LINK_CONFIRM_RATE_LIMIT_WINDOW_MINUTES`, `LINK_CONFIRM_RATE_LIMIT_MAX`
-- `FLAG_RATE_LIMIT_WINDOW_MINUTES`, `FLAG_RATE_LIMIT_MAX`, `FLAG_RATE_LIMIT_MAX_ANON`
-- `CLAIM_RATE_LIMIT_WINDOW_MINUTES`, `CLAIM_RATE_LIMIT_MAX`, `CLAIM_RATE_LIMIT_MAX_ANON`
-- `SMART_SEARCH_RATE_LIMIT_WINDOW_MINUTES`, `SMART_SEARCH_RATE_LIMIT_MAX`
-- `CATEGORY_SUGGEST_RATE_LIMIT_WINDOW_MINUTES`, `CATEGORY_SUGGEST_RATE_LIMIT_MAX`
-- `ADMIN_AUDIT_RATE_LIMIT_WINDOW_MINUTES`, `ADMIN_AUDIT_RATE_LIMIT_MAX`
-- `ANTI_ABUSE_EVENT_RETENTION_DAYS`
-
-## Moderation & Trust/Safety
-
-- Reports have moderation status: `pending`, `approved`, `rejected`, `flagged`.
-- Default moderation is `approved` for quick publishing.
-- Public listing/search/matches only use `approved` reports.
-- Rejected/flagged reports are removed from normal public matching flows.
-- Reports can be marked as verified (`is_verified=true`) by admins to improve trust signals.
-
-## Claim / Contact / Handoff Flow
-
-- Users can create a claim from one matched item to another (`pending`).
-- Target owner can approve/reject; requester can cancel; either participant can mark complete/not-match.
-- Contact details are shared only after claim is `approved` or `completed`.
-- Completing a claim resolves both linked items.
-- Marking not-match prevents that pair from being surfaced again as a primary match candidate.
-
-## Admin & Moderator Access (Telegram-linked, server-side)
-
-- Admin authorization is based on linked Telegram identity from the web session cookie.
-- Backend checks env-configured allowlists:
-  - `ADMIN_TELEGRAM_USER_IDS` (primary trusted identifier)
-  - `ADMIN_TELEGRAM_USERNAMES` (fallback convenience)
-- Role mapping in this project:
-  - `admin`: Telegram user ID matched
-  - `moderator`: Telegram username matched **only when** `ADMIN_USERNAME_BOOTSTRAP_ENABLED=true` (temporary bootstrap mode)
-- `/admin` uses Telegram-linked session flow. No password-style admin login is required.
-- Backend is the source of truth for access decisions.
-- Optional fallback for development only: `ALLOW_ADMIN_SECRET_FALLBACK=true` with `X-Admin-Secret`.
-- Web navigation shows **Moderation** entry and admin role chip only for authorized linked admin/moderator sessions.
-
-### First-time bootstrap (username) ➜ migrate to user ID (recommended)
-
-1. Temporarily set `ADMIN_USERNAME_BOOTSTRAP_ENABLED=true` and put your Telegram username in `ADMIN_TELEGRAM_USERNAMES`.
-2. Start backend+web+bot and link your website session with `/link <code>`.
-3. In Telegram bot, run `/whoami` and copy your numeric Telegram user id.
-4. Move to secure ID-based config:
-   - add your ID to `ADMIN_TELEGRAM_USER_IDS`
-   - set `ADMIN_USERNAME_BOOTSTRAP_ENABLED=false`
-   - remove username from `ADMIN_TELEGRAM_USERNAMES` (or leave empty)
-5. Restart services.
-
-This keeps Telegram-linked auth as the source of truth while transitioning to the stronger immutable identifier.
-
-### Configure in `.env`
-
-```dotenv
-ADMIN_TELEGRAM_USER_IDS=
-ADMIN_TELEGRAM_USERNAMES=Leo0742
-ADMIN_USERNAME_BOOTSTRAP_ENABLED=true
-ALLOW_ADMIN_SECRET_FALLBACK=false
-```
-
-Tips:
-- Use IDs wherever possible because usernames can change.
-- Username matching is case-insensitive and supports optional `@`.
-
-### How to find your Telegram user ID
-
-- Use Telegram helper bot like `@userinfobot`, or
-- Log incoming Telegram updates in your own bot and read `from.id`.
-
-### Local admin access test
-
-1. Copy env and edit admin variables:
-   ```bash
-   cp .env.example .env
-   ```
-2. For first login bootstrap, set:
-   ```dotenv
-   ADMIN_TELEGRAM_USER_IDS=
-   ADMIN_TELEGRAM_USERNAMES=<your_telegram_username_without_@>
-   ADMIN_USERNAME_BOOTSTRAP_ENABLED=true
-ALLOW_ADMIN_SECRET_FALLBACK=false
-   ```
-3. Start stack:
-   ```bash
-   docker compose up --build
-   ```
-4. Open `/admin`.
-5. If prompted, generate link code and send `/link <code>` to your bot.
-6. In bot, run:
-   ```text
-   /whoami
-   ```
-   Confirm it shows `Admin access: yes` and note `Telegram user id`.
-7. Update `.env` to switch to ID-based allowlist:
-   ```dotenv
-   ADMIN_TELEGRAM_USER_IDS=<your_numeric_telegram_user_id>
-   ADMIN_TELEGRAM_USERNAMES=
-   ADMIN_USERNAME_BOOTSTRAP_ENABLED=true
-ALLOW_ADMIN_SECRET_FALLBACK=false
-   ```
-8. Restart backend and bot:
-   ```bash
-   docker compose up --build backend bot
-   ```
-9. Verify:
-   - `/whoami` still shows admin access with role
-   - `/admin` loads moderation UI
-   - if removed from allowlists, `/admin` shows access denied and hides admin nav
-
-## Anti-Spam Rules
-
-- Rate limit on create: max `CREATE_RATE_LIMIT_MAX_ITEMS` within `CREATE_RATE_LIMIT_WINDOW_MINUTES`.
-- Duplicate protection blocks repeated same title/description/contact within 24 hours.
-
-## Bot Search & Category UX Upgrade
-
-- Smart search (`/search`) is now typo-tolerant and punctuation/case-insensitive.
-- Ranking combines fuzzy title match, partial text match, token overlap, and location/category similarity.
-- `/new` flow category step now includes:
-  - large practical category catalog
-  - inline keyboard browsing (paged)
-  - auto-suggested category inferred from title (user can accept/change)
-- `/clear` now performs best-effort recent-message cleanup and returns to a single fresh-start message with main keyboard.
-- Very low-quality/gibberish-like text submissions are rejected.
-
-## Media Storage (Local, Persistent)
-
-- Uploaded photos are stored locally in backend media directory: `/app/media`.
-- Backend serves files via `/media/<image_path>`.
-- Docker compose mounts a persistent named volume for media (`media_data`) so files survive container restarts.
-- Supported image types: JPEG / PNG / WEBP.
-- Max upload size is controlled by backend setting `MEDIA_MAX_BYTES` (default: 5MB).
-
-## Bot: My Items & Management
-
-- Use `/myitems` (or **My Items** keyboard button) to list and manage your reports.
-- Each item card includes actions:
-  - Show Matches
-  - Mark Resolved / Reopen
-  - Delete (soft)
-- Bot verifies ownership via the same Telegram identity used by linked web sessions.
-- When item photos exist, `/myitems` cards are sent as photo messages with captions.
-
-## Bot: Photo Upload Flow
-
-- In `/new`, the wizard now includes a **Photo** step.
-- User can:
-  - send a photo
-  - tap **Skip Photo**
-- Back/Cancel behavior still works across wizard steps.
-- Review screen shows whether a photo is attached.
-
-## Website Ownership: Telegram Linked (server-side source of truth)
-
-- localStorage is **not** used as ownership source of truth anymore.
-- Website creates/uses an HTTP-only session cookie (`lfb_session`) on backend.
-- User clicks **Connect Telegram** in web UI, gets short link code, and sends `/link <code>` to the Telegram bot.
-- Bot confirms link via `POST /api/auth/link/confirm`; backend stores Telegram identity in the session.
-- `My Reports` now loads from `GET /api/items/me` and ownership checks are performed server-side.
-- Reports created from website are stored with owner identity fields (`owner_telegram_user_id`, `owner_telegram_username`, `owner_display_name`).
-- The same owner identity is used in bot `/myitems`, claims, and lifecycle actions across devices.
-
-## Automatic Match Notifications (Bot)
-
-- After creating a new item in bot, if strong matches are found (score threshold), bot:
-  - notifies the creator
-  - notifies matched item owners when `telegram_user_id` is available
-- Notification failures are swallowed and do not block item creation flow.
-- If matched items include photos, notifications may include image media.
-- Matches are moderation-aware: rejected/flagged items are excluded from match candidates.
-
-## Local Development (without Docker)
-
-### Backend
+Example install (Ubuntu 24.04):
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg git
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER
 ```
+Log out and back in once after adding your user to the `docker` group.
 
-### Frontend
+### 1) Clone project
 ```bash
-cd frontend
-npm install
-npm run dev
+git clone https://github.com/Leo0742/Lost-Found-Board.git
+cd Lost-Found-Board
 ```
 
-### Bot
-```bash
-cd bot
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
-```
-
-## Seed Demo Data
-
-```bash
-cd backend
-python scripts/seed.py
-```
-
-## Testing
-
-```bash
-cd backend
-pytest
-```
-
-## VM Deployment Notes
-
-- Install Docker + Docker Compose plugin on VM.
-- Clone repository and configure `.env`.
-- Run `docker compose up -d --build`.
-- Put VM domain/IP in front of Caddy port 80.
-- For HTTPS, update `frontend/Caddyfile` to use your domain and TLS email.
-
-
-## Exact Run Instructions (Docker)
-
+### 2) Configure `.env`
 ```bash
 cp .env.example .env
-docker compose down -v
-docker compose up --build
+```
+Edit `.env` for production:
+- Set strong `POSTGRES_PASSWORD`.
+- Set non-default `INTERNAL_API_TOKEN`.
+- Keep `STRICT_INTERNAL_TOKEN=true`.
+- Set `APP_ENV=prod`.
+- Set admin allowlist (`ADMIN_TELEGRAM_USER_IDS`, optionally usernames for bootstrap).
+- Set `TELEGRAM_BOT_TOKEN` only if bot will be enabled.
+- Optionally set `WEB_PORT` if you do not want port `80`.
+
+### 3) Start services (Docker Compose)
+Start web + backend + db:
+```bash
+docker compose up -d --build db backend web
 ```
 
-Then open:
-- `http://localhost` (frontend)
-- `http://localhost/api/docs` (backend docs)
+Optional: start Telegram bot profile:
+```bash
+docker compose --profile bot up -d --build bot
+```
 
-## Verification Checklist
+### 4) Verify deployment
+Check containers:
+```bash
+docker compose ps
+```
 
-1. Create a `lost` item: `black wallet with student card` in `dormitory A entrance`.
-2. Create a `found` item: `dark card holder found near dorm A`.
-3. Open item details or call `GET /api/items/matches/{id}`.
-4. Confirm a match appears with:
-   - score (0-10),
-   - confidence label,
-   - reasons like `matching object type`, `similar location`, `semantic similarity detected`.
-5. Try typo case (`airpods csae` vs `apple earbuds case`) and confirm it still matches.
+Check backend readiness:
+```bash
+curl -f http://localhost/api/ready
+```
 
-## Demo Scenario
+Open in browser:
+- Web UI: `http://<VM_IP>:${WEB_PORT:-80}`
+- API docs: `http://<VM_IP>:${WEB_PORT:-80}/api/docs`
 
-Input pair:
-- Lost: `black wallet with student card`, location `dormitory A entrance`
-- Found: `dark card holder found near dorm`, location `near dorm A`
+### 5) Basic operational check
+- Create one `lost` and one `found` report from web or bot.
+- Open item details and confirm matches are returned.
+- If using bot, test `/start`, `/new`, and `/search`.
 
-Expected behavior:
-- `dark -> black` and `card holder -> wallet` normalization aligns terms.
-- Location aliases normalize to the same campus zone.
-- Fuzzy matching tolerates wording differences.
-- Embedding similarity catches contextual equivalence.
-- Match is returned with medium/high confidence and explanation reasons.
-
-
-## Internal token safety
-
-- `INTERNAL_API_TOKEN` must be set to a non-default value outside `APP_ENV=dev/test/local`.
-- With `STRICT_INTERNAL_TOKEN=true` (default), backend startup and `/ready` fail in non-dev environments when token is missing/default.
-- Local development remains workable with default token.
+### Optional local development workflow
+If needed, a non-Docker local path exists for backend/frontend/bot using Python virtualenv + npm scripts.
