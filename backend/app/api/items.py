@@ -582,7 +582,7 @@ def get_item(
     item = service.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    is_public_visible = item.lifecycle == ItemLifecycle.ACTIVE and item.moderation_status == ModerationStatus.APPROVED
+    is_public_visible = item.lifecycle == ItemLifecycle.ACTIVE and item.moderation_status in {ModerationStatus.APPROVED, ModerationStatus.FLAGGED}
     is_admin_or_moderator = bool(get_admin_role_for_session(session))
     if not is_public_visible and not is_admin_or_moderator and not (auth_telegram_user_id and service.is_owner(item, auth_telegram_user_id)):
         raise HTTPException(status_code=404, detail="Item not found")
