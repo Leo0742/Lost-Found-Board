@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -10,7 +10,7 @@ class UserProfile(Base):
     __tablename__ = "user_profiles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    telegram_user_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
     telegram_display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 

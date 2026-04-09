@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Enum as SqlEnum, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Enum as SqlEnum, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -69,8 +69,8 @@ class Item(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     contact_name: Mapped[str] = mapped_column(String(80), nullable=False)
     telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    owner_telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    owner_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     owner_telegram_username: Mapped[str | None] = mapped_column(String(80), nullable=True)
     owner_display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)

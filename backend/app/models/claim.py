@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -22,8 +22,8 @@ class Claim(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     source_item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
     target_item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
-    requester_telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    owner_telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    requester_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    owner_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     requester_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     claim_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ClaimStatus] = mapped_column(

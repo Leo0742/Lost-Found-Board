@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -17,7 +17,7 @@ class AntiAbuseEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     action: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    actor_telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    actor_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     fingerprint: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
