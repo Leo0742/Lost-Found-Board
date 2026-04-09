@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, JSON, String, func
+from sqlalchemy import BigInteger, DateTime, Index, Integer, JSON, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -18,7 +18,7 @@ class AuditEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    actor_telegram_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    actor_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     item_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     claim_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

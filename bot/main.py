@@ -629,8 +629,41 @@ async def cmd_link(message: Message, command: CommandObject) -> None:
             telegram_username=message.from_user.username,
             display_name=message.from_user.full_name,
         )
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        if status_code == 404:
+            await message.answer(
+                "❌ Link code not found or expired. Please generate a new code on the website and try again.",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        elif status_code == 429:
+            await message.answer(
+                "⏳ Too many attempts. Please wait a moment before trying again.",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        else:
+            logger.error(
+                "Backend error during link/confirm for user_id=%s: HTTP %s",
+                message.from_user.id,
+                status_code,
+                exc_info=True,
+            )
+            await message.answer(
+                "⚠️ The server encountered an unexpected error while linking your account. "
+                "Please try again in a few minutes. If the problem persists, contact support.",
+                reply_markup=MAIN_KEYBOARD,
+            )
+        return
     except httpx.HTTPError:
-        await message.answer("Could not link this code. It may be expired. Generate a new code on the website.", reply_markup=MAIN_KEYBOARD)
+        logger.error(
+            "Network error during link/confirm for user_id=%s",
+            message.from_user.id,
+            exc_info=True,
+        )
+        await message.answer(
+            "⚠️ Could not reach the server. Please check your connection and try again.",
+            reply_markup=MAIN_KEYBOARD,
+        )
         return
     telegram_avatar_url: str | None = None
     try:

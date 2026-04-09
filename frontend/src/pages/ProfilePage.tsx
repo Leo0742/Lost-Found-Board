@@ -210,6 +210,39 @@ const MapAddressPicker = ({ onClose, onSelect }: { onClose: () => void; onSelect
   )
 }
 
+/** Copy text to clipboard.
+ *  Tries the modern async Clipboard API first; falls back to the legacy
+ *  execCommand approach for HTTP pages or browsers that deny permission.
+ *  Returns true on success, false on failure.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // fall through to legacy approach
+    }
+  }
+  // Legacy fallback: create an off-screen textarea and execCommand
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.top = '0'
+    textarea.style.left = '0'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 export const ProfilePage = () => {
   const { t } = useSettings()
   const [loading, setLoading] = useState(true)
@@ -628,16 +661,16 @@ export const ProfilePage = () => {
                   type="button"
                   className="button-neutral button-sm"
                   onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(linkCommand)
+                    const ok = await copyToClipboard(linkCommand)
+                    if (ok) {
                       setCopiedLinkCommand(true)
-                      window.setTimeout(() => setCopiedLinkCommand(false), 1200)
-                    } catch {
-                      setCopiedLinkCommand(false)
+                      window.setTimeout(() => setCopiedLinkCommand(false), 1500)
+                    } else {
+                      setError('Could not copy automatically — please select and copy the code manually.')
                     }
                   }}
                 >
-                  {copiedLinkCommand ? 'Copied' : 'Copy'}
+                  {copiedLinkCommand ? 'Copied!' : 'Copy'}
                 </button>
               </div>
             ) : null}
