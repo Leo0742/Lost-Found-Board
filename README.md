@@ -6,14 +6,14 @@
 </p>
 
 <p align="center">
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-F3F4F6?style=for-the-badge&logo=fastapi&logoColor=009688&labelColor=F3F4F6&color=F3F4F6" alt="FastAPI" /></a>
-  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-F3F4F6?style=for-the-badge&logo=react&logoColor=61DAFB&labelColor=F3F4F6&color=F3F4F6" alt="React" /></a>
-  <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-F3F4F6?style=for-the-badge&logo=vite&logoColor=646CFF&labelColor=F3F4F6&color=F3F4F6" alt="Vite" /></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-F3F4F6?style=for-the-badge&logo=python&logoColor=3776AB&labelColor=F3F4F6&color=F3F4F6" alt="Python" /></a>
-  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-F3F4F6?style=for-the-badge&logo=postgresql&logoColor=4169E1&labelColor=F3F4F6&color=F3F4F6" alt="PostgreSQL" /></a>
-  <a href="https://www.sqlalchemy.org/"><img src="https://img.shields.io/badge/SQLAlchemy-F3F4F6?style=for-the-badge&logo=sqlalchemy&logoColor=D71F00&labelColor=F3F4F6&color=F3F4F6" alt="SQLAlchemy" /></a>
-  <a href="https://aiogram.dev/"><img src="https://img.shields.io/badge/aiogram-F3F4F6?style=for-the-badge&logo=telegram&logoColor=26A5E4&labelColor=F3F4F6&color=F3F4F6" alt="aiogram" /></a>
-  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-F3F4F6?style=for-the-badge&logo=docker&logoColor=2496ED&labelColor=F3F4F6&color=F3F4F6" alt="Docker" /></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-334155?style=for-the-badge&logo=fastapi&logoColor=009688" alt="FastAPI" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-334155?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" /></a>
+  <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-334155?style=for-the-badge&logo=vite&logoColor=646CFF" alt="Vite" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-334155?style=for-the-badge&logo=python&logoColor=FFD43B" alt="Python" /></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-334155?style=for-the-badge&logo=postgresql&logoColor=4169E1" alt="PostgreSQL" /></a>
+  <a href="https://www.sqlalchemy.org/"><img src="https://img.shields.io/badge/SQLAlchemy-334155?style=for-the-badge&logo=sqlalchemy&logoColor=D71F00" alt="SQLAlchemy" /></a>
+  <a href="https://aiogram.dev/"><img src="https://img.shields.io/badge/aiogram-334155?style=for-the-badge&logo=telegram&logoColor=26A5E4" alt="aiogram" /></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-334155?style=for-the-badge&logo=docker&logoColor=2496ED" alt="Docker" /></a>
 </p>
 
 ## Overview
