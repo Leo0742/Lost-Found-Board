@@ -1,19 +1,19 @@
 # Lost & Found Board
 
 <p align="center">
-  <b>Full-stack lost-and-found platform with web app, Telegram bot, matching, claims, moderation, and Docker deployment</b><br />
-  FastAPI · React/Vite · PostgreSQL · SQLAlchemy · Telegram Bot · Semantic Search · Docker Compose
+  <b>Web + Telegram platform for matching lost and found items</b><br />
+  Report items · Find matches · Manage claims · Moderate safely
 </p>
 
 <p align="center">
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0F766E?style=for-the-badge&logo=fastapi&logoColor=5EEAD4" alt="FastAPI" /></a>
-  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-1E3A8A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" /></a>
-  <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-4C1D95?style=for-the-badge&logo=vite&logoColor=FDE68A" alt="Vite" /></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-315A8C?style=for-the-badge&logo=python&logoColor=FACC15" alt="Python" /></a>
-  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-315A8C?style=for-the-badge&logo=postgresql&logoColor=93C5FD" alt="PostgreSQL" /></a>
-  <a href="https://www.sqlalchemy.org/"><img src="https://img.shields.io/badge/SQLAlchemy-7F1D1D?style=for-the-badge&logo=sqlalchemy&logoColor=FCA5A5" alt="SQLAlchemy" /></a>
-  <a href="https://aiogram.dev/"><img src="https://img.shields.io/badge/aiogram-1E5F8A?style=for-the-badge&logo=telegram&logoColor=60A5FA" alt="aiogram" /></a>
-  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-1E5F8A?style=for-the-badge&logo=docker&logoColor=60A5FA" alt="Docker" /></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-F3F4F6?style=for-the-badge&logo=fastapi&logoColor=009688&labelColor=F3F4F6&color=F3F4F6" alt="FastAPI" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-F3F4F6?style=for-the-badge&logo=react&logoColor=61DAFB&labelColor=F3F4F6&color=F3F4F6" alt="React" /></a>
+  <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-F3F4F6?style=for-the-badge&logo=vite&logoColor=646CFF&labelColor=F3F4F6&color=F3F4F6" alt="Vite" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-F3F4F6?style=for-the-badge&logo=python&logoColor=3776AB&labelColor=F3F4F6&color=F3F4F6" alt="Python" /></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-F3F4F6?style=for-the-badge&logo=postgresql&logoColor=4169E1&labelColor=F3F4F6&color=F3F4F6" alt="PostgreSQL" /></a>
+  <a href="https://www.sqlalchemy.org/"><img src="https://img.shields.io/badge/SQLAlchemy-F3F4F6?style=for-the-badge&logo=sqlalchemy&logoColor=D71F00&labelColor=F3F4F6&color=F3F4F6" alt="SQLAlchemy" /></a>
+  <a href="https://aiogram.dev/"><img src="https://img.shields.io/badge/aiogram-F3F4F6?style=for-the-badge&logo=telegram&logoColor=26A5E4&labelColor=F3F4F6&color=F3F4F6" alt="aiogram" /></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-F3F4F6?style=for-the-badge&logo=docker&logoColor=2496ED&labelColor=F3F4F6&color=F3F4F6" alt="Docker" /></a>
 </p>
 
 ## Overview
