@@ -1,8 +1,12 @@
+<p align="right">
+  <b>Русский</b> · <a href="README.en.md">English</a>
+</p>
+
 # Lost & Found Board
 
 <p align="center">
-  <b>Web + Telegram platform for matching lost and found items</b><br />
-  Report items · Find matches · Manage claims · Moderate safely
+  <b>Web + Telegram платформа для сопоставления потерянных и найденных вещей</b><br />
+  Создание объявлений · Поиск совпадений · Управление claims · Безопасная модерация
 </p>
 
 <p align="center">
@@ -16,41 +20,41 @@
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-334155?style=for-the-badge&logo=docker&logoColor=2496ED" alt="Docker" /></a>
 </p>
 
-## Overview
+## Обзор
 
-Lost & Found Board is my personal full-stack project for communities that need a shared, searchable, and moderated lost-and-found system. It combines a web interface, Telegram bot, backend API, PostgreSQL database, image handling, item matching, claim workflow, Telegram-linked identity, admin moderation, and Docker-based deployment.
+Lost & Found Board — мой личный full-stack проект для сообществ, которым нужна единая, доступная для поиска и модерируемая система потерянных и найденных вещей. Проект объединяет web-интерфейс, Telegram-бота, backend API, PostgreSQL, обработку изображений, matching вещей, claim workflow, идентификацию через Telegram, admin moderation и Docker-based deployment.
 
-The project is designed for places like universities, dormitories, offices, events, and campus communities where lost/found reports are usually scattered across chats and personal messages.
+Проект рассчитан на университеты, общежития, офисы, мероприятия и campus communities, где объявления о потерянных и найденных вещах обычно разбросаны по чатам и личным сообщениям.
 
-## Product problem
+## Проблема продукта
 
-Lost-and-found information is often fragmented:
+Информация о потерянных и найденных вещах часто фрагментирована:
 
-- users post reports in different chats;
-- owners and finders cannot easily discover matching reports;
-- duplicate reports and suspicious submissions are hard to moderate;
-- handoff between the owner and finder is not structured;
-- Telegram is convenient for users, but a web interface is better for browsing and administration.
+- пользователи публикуют объявления в разных чатах;
+- владельцам и нашедшим сложно обнаруживать подходящие друг другу объявления;
+- дубликаты и подозрительные публикации сложно модерировать;
+- передача вещи между владельцем и нашедшим не структурирована;
+- Telegram удобен для пользователей, но web-интерфейс лучше подходит для просмотра и администрирования.
 
-Lost & Found Board solves this by centralizing reports and connecting the web app with a Telegram bot.
+Lost & Found Board решает это, централизуя объявления и связывая web-приложение с Telegram-ботом.
 
-## What this project demonstrates
+## Что демонстрирует проект
 
-- **Backend product development** with FastAPI, SQLAlchemy, PostgreSQL, Alembic, typed schemas, and service-layer logic.
-- **Full-stack delivery** with a React/Vite frontend, REST API integration, item cards, forms, profile pages, admin views, and image uploads.
-- **Telegram automation** with aiogram, command handlers, FSM-based report creation, inline keyboards, photo upload, session linking, item management, and claim actions.
-- **Matching and search logic** with keyword/fuzzy scoring, category/location signals, semantic embedding fallback, confidence levels, and explainable match reasons.
-- **Trust and moderation features**: Telegram-linked sessions, CSRF-aware web sessions, rate limits, abuse events, audit events, moderation statuses, admin queues, and bulk actions.
-- **Deployment readiness** with Docker Compose services for PostgreSQL, backend, web, optional bot profile, health checks, persistent volumes, and environment-based configuration.
+- **Backend product development** с FastAPI, SQLAlchemy, PostgreSQL, Alembic, typed schemas и service-layer logic.
+- **Full-stack delivery** с React/Vite frontend, REST API integration, карточками вещей, формами, profile pages, admin views и image uploads.
+- **Telegram automation** с aiogram, command handlers, FSM-based созданием объявлений, inline keyboards, загрузкой фото, session linking, item management и claim actions.
+- **Matching и search logic** с keyword/fuzzy scoring, category/location signals, fallback на semantic embeddings, confidence levels и объяснимыми match reasons.
+- **Trust и moderation features**: Telegram-linked sessions, CSRF-aware web sessions, rate limits, abuse events, audit events, moderation statuses, admin queues и bulk actions.
+- **Готовность к deployment** с Docker Compose сервисами для PostgreSQL, backend, web, опционального bot profile, health checks, persistent volumes и environment-based configuration.
 
-## Screenshots
+## Скриншоты
 
 <p align="center">
-  <img src="screenshots/home.png" alt="Lost & Found Board home page" width="45%" />
-  <img src="screenshots/new-report.png" alt="Create new report page" width="45%" />
+  <img src="screenshots/home.png" alt="Главная страница Lost & Found Board" width="45%" />
+  <img src="screenshots/new-report.png" alt="Страница создания нового объявления" width="45%" />
 </p>
 
-## Architecture
+## Архитектура
 
 ```mermaid
 flowchart LR
@@ -67,63 +71,63 @@ flowchart LR
     Web --> Profile[Profile / My Reports]
 ```
 
-## Main applications
+## Основные приложения
 
-| Area | Path | Purpose |
+| Область | Путь | Назначение |
 |---|---|---|
-| Backend API | `backend/` | FastAPI service for reports, search, smart matching, claims, auth/session linking, profile, moderation, audit, media, and readiness endpoints. |
-| Web app | `frontend/` | React/Vite interface for browsing, creating reports, viewing matches, managing user reports, editing profile data, and admin moderation. |
-| Telegram bot | `bot/` | aiogram bot for creating reports, searching items, managing personal items, linking web sessions, viewing claims, and reporting suspicious items. |
-| Deployment | `docker-compose.yml`, Dockerfiles | Docker Compose runtime for PostgreSQL, backend, web, optional bot service, persistent volumes, and health checks. |
-| Screenshots | `screenshots/` | Demo images used in this README. |
+| Backend API | `backend/` | FastAPI-сервис для объявлений, поиска, smart matching, claims, auth/session linking, профиля, moderation, audit, media и readiness endpoints. |
+| Web app | `frontend/` | React/Vite-интерфейс для просмотра и создания объявлений, просмотра matches, управления своими объявлениями, редактирования профиля и admin moderation. |
+| Telegram bot | `bot/` | aiogram-бот для создания объявлений, поиска вещей, управления своими items, linking web sessions, просмотра claims и жалоб на подозрительные объявления. |
+| Deployment | `docker-compose.yml`, Dockerfiles | Docker Compose runtime для PostgreSQL, backend, web, опционального bot service, persistent volumes и health checks. |
+| Screenshots | `screenshots/` | Demo-изображения, используемые в README. |
 
-## Product features
+## Возможности продукта
 
 ### Web app
 
-- Browse lost/found reports with filters, categories, search, and item detail pages.
-- Create lost/found reports with title, category, location, description, contact data, and optional image upload.
-- View match suggestions for item reports.
-- Manage personal reports in **My Reports**: resolve, reopen, delete, and track lifecycle status.
-- Profile page for saved contact/address data used in item and claim flows.
-- Telegram link flow for trusted ownership actions.
-- Admin moderation interface for authorized Telegram-linked admins/moderators.
+- Просмотр lost/found объявлений с filters, categories, search и item detail pages.
+- Создание lost/found объявлений с title, category, location, description, contact data и необязательной загрузкой изображения.
+- Просмотр match suggestions для объявлений.
+- Управление своими объявлениями в **My Reports**: resolve, reopen, delete и отслеживание lifecycle status.
+- Profile page для сохранённых contact/address данных, используемых в item и claim flows.
+- Telegram link flow для доверенных ownership actions.
+- Admin moderation interface для авторизованных Telegram-linked admins/moderators.
 
 ### Backend API
 
-- Report lifecycle model: `active`, `resolved`, `deleted`.
+- Модель lifecycle объявления: `active`, `resolved`, `deleted`.
 - Moderation statuses: `pending`, `approved`, `rejected`, `flagged`.
-- Lost/found report endpoints, image upload, filtering, search, smart search, category suggestions, and personal report management.
-- Claim workflow: create, approve, reject, cancel, complete, and mark as not a match.
-- Rate limiting and anti-abuse events for report creation, image upload, smart search, category suggestions, claim actions, and admin/audit operations.
-- Audit events, moderation signals, moderation statistics, admin queue summaries, and bulk moderation/lifecycle actions.
-- Health and readiness endpoints for deployment checks.
+- Lost/found endpoints, image upload, filtering, search, smart search, category suggestions и управление личными объявлениями.
+- Claim workflow: create, approve, reject, cancel, complete и mark as not a match.
+- Rate limiting и anti-abuse events для создания объявлений, image upload, smart search, category suggestions, claim actions и admin/audit операций.
+- Audit events, moderation signals, moderation statistics, admin queue summaries и bulk moderation/lifecycle actions.
+- Health и readiness endpoints для deployment checks.
 
 ### Matching engine
 
-The matching service combines multiple signals instead of relying on a single text comparison:
+Matching service комбинирует несколько сигналов вместо одного текстового сравнения:
 
-- opposite lost/found status requirement;
-- category and category-family compatibility;
-- keyword overlap and fuzzy title/location similarity;
-- object type, brand, color, model, and distinctive token signals;
-- optional semantic embeddings through `fastembed`;
-- contradiction penalties for conflicting object/color signals;
-- confidence levels and human-readable match reasons.
+- требование противоположного lost/found статуса;
+- совместимость category и category-family;
+- keyword overlap и fuzzy similarity заголовка/локации;
+- сигналы object type, brand, color, model и distinctive tokens;
+- опциональные semantic embeddings через `fastembed`;
+- contradiction penalties для конфликтующих object/color сигналов;
+- confidence levels и понятные человеку match reasons.
 
 ### Telegram bot
 
-- `/new` guided report wizard with status, title, category, location, description, contact, and optional photo step.
-- `/search`, `/list`, `/lost`, `/found` commands for browsing reports.
-- `/myitems` management actions: show matches, resolve, reopen, and delete.
-- `/link <code>` flow for connecting Telegram identity to the web session.
-- `/claims` and inline claim actions for item handoff workflow.
-- `/flag` command for suspicious reports.
-- Inline keyboards for reviewing submissions, item actions, claim actions, and location/route helpers.
+- `/new` — пошаговый мастер создания объявления со status, title, category, location, description, contact и optional photo step.
+- `/search`, `/list`, `/lost`, `/found` — команды просмотра объявлений.
+- `/myitems` — actions для просмотра matches, resolve, reopen и delete.
+- `/link <code>` — привязка Telegram identity к web session.
+- `/claims` и inline claim actions для item handoff workflow.
+- `/flag` — жалоба на подозрительные объявления.
+- Inline keyboards для просмотра submissions, item actions, claim actions и location/route helpers.
 
-## Tech stack
+## Технологический стек
 
-| Layer | Technologies |
+| Слой | Технологии |
 |---|---|
 | Backend | Python, FastAPI, SQLAlchemy, Alembic, Pydantic Settings, Uvicorn |
 | Database | PostgreSQL 16, SQLAlchemy models, migrations |
@@ -135,7 +139,7 @@ The matching service combines multiple signals instead of relying on a single te
 | Testing / quality | pytest, httpx test client, TypeScript build |
 | Infrastructure | Docker, Docker Compose, health checks, persistent volumes |
 
-## Repository structure
+## Структура репозитория
 
 ```text
 Lost-Found-Board/
@@ -147,98 +151,98 @@ Lost-Found-Board/
   .env.example        # Environment template
 ```
 
-## Quick start
+## Быстрый старт
 
-### Requirements
+### Требования
 
-- Docker and Docker Compose
+- Docker и Docker Compose
 - Git
-- Telegram bot token only if you want to run the bot
+- Telegram bot token — только если нужно запускать бота
 
-### Clone repository
+### Клонирование репозитория
 
 ```bash
 git clone https://github.com/Leo0742/Lost-Found-Board.git
 cd Lost-Found-Board
 ```
 
-### Configure environment
+### Настройка окружения
 
 ```bash
 cp .env.example .env
 ```
 
-For local development, defaults are enough to start the web app, backend, and database. For production-like usage, set strong values for:
+Для local development значений по умолчанию достаточно для запуска web app, backend и database. Для production-like использования задайте надёжные значения:
 
 - `POSTGRES_PASSWORD`
 - `INTERNAL_API_TOKEN`
 - `ADMIN_SECRET`
 - `ADMIN_TELEGRAM_USER_IDS`
-- `TELEGRAM_BOT_TOKEN` if the bot is enabled
+- `TELEGRAM_BOT_TOKEN`, если bot включён
 - `APP_ENV=prod`
 - `STRICT_INTERNAL_TOKEN=true`
 
-### Run with Docker Compose
+### Запуск через Docker Compose
 
-Start database, backend, and web app:
+Запуск database, backend и web app:
 
 ```bash
 docker compose up -d --build db backend web
 ```
 
-Optional Telegram bot:
+Опциональный Telegram bot:
 
 ```bash
 docker compose --profile bot up -d --build bot
 ```
 
-### Verify runtime
+### Проверка runtime
 
 ```bash
 docker compose ps
 curl -f http://localhost/api/ready
 ```
 
-Default URLs:
+URL по умолчанию:
 
-| Service | URL |
+| Сервис | URL |
 |---|---|
 | Web UI | `http://localhost` |
 | API docs | `http://localhost/api/docs` |
 | Backend readiness | `http://localhost/api/ready` |
 
-## Local development notes
+## Заметки по локальной разработке
 
-The preferred path is Docker Compose because it runs the same service topology used by deployment: database, backend, web, shared media volume, and optional bot.
+Предпочтительный способ — Docker Compose, потому что он запускает ту же service topology, что используется при deployment: database, backend, web, shared media volume и optional bot.
 
-A manual local workflow is also possible:
+Возможен и ручной локальный workflow:
 
 - backend: Python virtual environment + FastAPI/Uvicorn;
-- frontend: `npm install` / `npm run dev` inside `frontend/`;
+- frontend: `npm install` / `npm run dev` внутри `frontend/`;
 - bot: Python virtual environment + `aiogram` runtime.
 
-## Main operational checks
+## Основные operational checks
 
-After startup, a basic end-to-end check is:
+После запуска базовая end-to-end проверка:
 
-1. Create one `lost` report and one `found` report.
-2. Open item details and confirm match suggestions are returned.
-3. Link Telegram to the web session using a generated code.
-4. Manage reports through **My Reports** or the Telegram `/myitems` command.
-5. Create and resolve a claim between opposite lost/found reports.
-6. If the bot is enabled, test `/start`, `/new`, `/search`, `/myitems`, and `/claims`.
+1. Создать одно `lost` и одно `found` объявление.
+2. Открыть item details и убедиться, что возвращаются match suggestions.
+3. Привязать Telegram к web session с помощью сгенерированного кода.
+4. Управлять объявлениями через **My Reports** или Telegram-команду `/myitems`.
+5. Создать и завершить claim между противоположными lost/found объявлениями.
+6. Если bot включён, проверить `/start`, `/new`, `/search`, `/myitems` и `/claims`.
 
-## Status
+## Статус
 
-This is an active personal portfolio project. The core web, backend, Telegram bot, Docker runtime, report lifecycle, matching, moderation, and claim workflows are implemented. Future improvements may include external object storage, native mobile apps, richer OAuth options, and production monitoring integrations.
+Это активный личный portfolio project. Основные web, backend, Telegram bot, Docker runtime, report lifecycle, matching, moderation и claim workflows реализованы. Возможные будущие улучшения: external object storage, native mobile apps, более развитые OAuth options и production monitoring integrations.
 
-## Why it matters for review
+## Почему проект важен для технического обзора
 
-For recruiters or engineering reviewers, this project demonstrates practical exposure to:
+Для рекрутеров и инженерных ревьюеров проект демонстрирует практический опыт в:
 
-- backend API design with FastAPI, SQLAlchemy, PostgreSQL, and service-layer architecture;
-- full-stack feature delivery across backend, frontend, Telegram bot, and deployment;
-- search/matching logic with explainable scoring and optional semantic embeddings;
-- session/security concerns such as CSRF-aware cookies, Telegram-linked identity, internal tokens, rate limits, admin allowlists, and audit events;
-- Dockerized deployment with health checks, persistent volumes, and optional service profiles;
-- product thinking around real user workflows: reporting, matching, claiming, moderation, and handoff.
+- backend API design с FastAPI, SQLAlchemy, PostgreSQL и service-layer architecture;
+- full-stack feature delivery через backend, frontend, Telegram bot и deployment;
+- search/matching logic с explainable scoring и optional semantic embeddings;
+- session/security задачах: CSRF-aware cookies, Telegram-linked identity, internal tokens, rate limits, admin allowlists и audit events;
+- Dockerized deployment с health checks, persistent volumes и optional service profiles;
+- product thinking вокруг реальных пользовательских workflows: reporting, matching, claiming, moderation и handoff.
